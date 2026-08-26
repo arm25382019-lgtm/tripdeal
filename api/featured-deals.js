@@ -53,6 +53,10 @@ const COUNTRY_CONFIG = {
   },
 };
 
+// Featured deals intentionally start only from Thailand's major gateway airports.
+// This keeps the home feed relevant while still allowing domestic and cross-border Asia deals.
+const FEATURED_ORIGINS = ['BKK', 'DMK', 'CNX', 'HKT'];
+
 function monthString(date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
@@ -90,11 +94,11 @@ export default async function handler(req, res) {
 
   try {
     const months = nextMonths(2);
-    const origins = ['BKK', 'DMK'];
     const tasks = [];
 
     for (const [destination, city] of config.destinations) {
-      for (const origin of origins) {
+      for (const origin of FEATURED_ORIGINS) {
+        if (origin === destination) continue;
         for (const departureMonth of months) {
           tasks.push((async () => {
             const rows = await fetchGroupedPrices({
@@ -105,7 +109,9 @@ export default async function handler(req, res) {
               maxTripDuration: countryKey === 'ไทย' ? 7 : 10,
               directOnly: false,
             });
-            return rows.map((row) => ({ ...row, city, country: config.country, flag: config.flag, destination_code: destination }));
+            return rows
+              .filter((row) => FEATURED_ORIGINS.includes(String(row.origin_airport || row.origin || '').toUpperCase()))
+              .map((row) => ({ ...row, city, country: config.country, flag: config.flag, destination_code: destination }));
           })());
         }
       }
@@ -146,6 +152,7 @@ export default async function handler(req, res) {
       country: countryKey,
       flag: config.flag,
       months,
+      featured_origins: FEATURED_ORIGINS,
       data_type: 'cached_prices_found_by_aviasales_users',
       freshness_note: 'Discovery prices only. Final booking and payment happen on the airline website.',
       partial_failures: settled.filter((x) => x.status === 'rejected').length,
