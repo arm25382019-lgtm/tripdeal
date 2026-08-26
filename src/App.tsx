@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, ChevronRight, Clock3, Home, Luggage, Plane, Search, User } from 'lucide-react';
+import { Bell, ChevronRight, Clock3, Home, Plane, Search, User } from 'lucide-react';
 import { Link, Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import FareDetails from './components/FareDetails';
 import TripiAssistant from './components/TripiAssistant';
 
 type Destination = {
@@ -269,15 +270,17 @@ function FlightPage() {
     <FlightLegCard leg={schedule.outbound} airline={airline} direct={deal.is_direct}/>
     <FlightLegCard leg={schedule.inbound} airline={airline} direct={deal.is_direct}/>
 
-    <div className="flight-benefits">
-      <div><Luggage size={19}/><span>สัมภาระ</span><strong>{deal.baggage_kg ?? 20} kg</strong></div>
-      <div><Plane size={19}/><span>เส้นทาง</span><strong>{deal.is_direct ? 'บินตรง' : 'มีต่อเครื่อง'}</strong></div>
-    </div>
+    <FareDetails
+      price={Number(deal.price_thb)}
+      baggageKg={deal.baggage_kg}
+      airline={airline}
+      dealLabel={deal.deal_label}
+      isDemo
+    />
 
-    <div className="price-box roundtrip-price"><div><span>ราคาไป–กลับ / คน</span><strong>฿{money(Number(deal.price_thb))}</strong><small>รวมเที่ยวไป + เที่ยวกลับในดีลนี้</small></div><span className="good">{deal.deal_label || 'ราคาดี'}</span></div>
-    <p className="price-disclaimer">ราคาปัจจุบันใน TripDeal ยังเป็นข้อมูลดีลตัวอย่าง ระบบจะตรวจสอบราคา ภาษี ค่าธรรมเนียม และที่นั่งว่างอีกครั้งเมื่อเชื่อม Flight API จริง</p>
+    <p className="price-disclaimer">ข้อมูลบางส่วนใน TripDeal ตอนนี้ยังเป็นข้อมูลดีลตัวอย่าง ระบบจะตรวจสอบราคา ภาษี ค่าธรรมเนียม สัมภาระ Fare Rules และที่นั่งว่างจาก Flight API อีกครั้งก่อนส่งต่อไปจองจริง</p>
     <button className="primary big" onClick={()=>setOpen(true)}>ตรวจสอบราคาก่อนจอง</button>
-    {open&&<div className="modal-backdrop"><div className="modal"><h3>เวอร์ชันทดลอง</h3><p>รายละเอียดหน้าเที่ยวบินพร้อมแล้วครับ ขั้นต่อไปคือเชื่อม Flight API เพื่อดึงราคา เวลา เทอร์มินัล สัมภาระ และที่นั่งว่างแบบสดก่อนส่งต่อไปจองจริง</p><button className="primary" onClick={()=>setOpen(false)}>เข้าใจแล้ว</button></div></div>}
+    {open&&<div className="modal-backdrop"><div className="modal"><h3>เวอร์ชันทดลอง</h3><p>โครงหน้าค่าโดยสาร สัมภาระ นโยบาย และสรุปราคาพร้อมแล้วครับ เมื่อเชื่อม Flight API ระบบจะเติม Fare Rules และราคาสดจริงก่อนส่งต่อไปพาร์ทเนอร์จองตั๋ว</p><button className="primary" onClick={()=>setOpen(false)}>เข้าใจแล้ว</button></div></div>}
   </div></Shell>;
 }
 
