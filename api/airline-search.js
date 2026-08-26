@@ -1,4 +1,7 @@
-import { duffelConfigured, searchExactFlights } from '../server/duffel.js';
+// Duffel integration was removed (server/duffel.js deleted). Local stubs keep this
+// endpoint importable so it never crashes at module load. Restore in V2.
+const duffelConfigured = () => false;
+const searchExactFlights = async () => ({ offers: [], live_mode: false });
 
 const TP_API = 'https://api.travelpayouts.com';
 const iataPattern = /^[A-Z0-9]{3}$/;
