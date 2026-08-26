@@ -125,28 +125,34 @@ export default function AirlineSearchPage() {
 
   const renderFallbackCard = (fallback: ReturnType<typeof getRouteFallbackAirlines>[number], index: number) => {
     const airline = getAirline(fallback.code);
-    const bookingUrl = buildDirectBookingUrl(fallback.code, {
-      origin,
-      destination,
-      depart,
-      returnDate,
-      trip,
-      adults,
-      routeBookingUrl: fallback.routeBookingUrl,
-    });
     const reference = referenceFor(fallback.code);
     const isExactReference = reference?.reference_type === 'exact_date';
-    return <article className={index === 0 && sorted.length === 0 ? 'air-result-card best' : 'air-result-card'} key={`${origin}-${destination}-${fallback.code}`}>
+    const bookingUrl = isExactReference
+      ? buildDirectBookingUrl(fallback.code, {
+          origin,
+          destination,
+          depart,
+          returnDate,
+          trip,
+          adults,
+          routeBookingUrl: fallback.routeBookingUrl,
+        })
+      : buildDirectBookingUrl(fallback.code, fallback.routeBookingUrl);
+
+    return <article className="air-result-card" key={`${origin}-${destination}-${fallback.code}-${index}`}>
       <div className="air-result-main">
-        <div className="air-result-tags"><span className="best">✈️ มีเที่ยวบินตรง</span><span>จองตรงสายการบิน</span></div>
+        <div className="air-result-tags">
+          {isExactReference ? <span className="best">✓ พบข้อมูลตรงวันที่เลือก</span> : <span>เส้นทางที่สายการบินให้บริการ</span>}
+          <span>จองตรงสายการบิน</span>
+        </div>
         <h3>{airlineDisplayName(fallback.code)}</h3>
         <p className="air-result-route">{origin} → {destination}</p>
-        <p>{fallback.note || 'ตรวจสอบเที่ยวบินและราคาล่าสุดกับสายการบิน'}</p>
-        {reference ? <p className="air-result-flight">{reference.flight_number ? `เที่ยวบิน ${reference.airline}${reference.flight_number} · ` : ''}{isExactReference ? `พบราคาตรงวันที่ ${dateTH(reference.departure_at)}` : `ราคาอ้างอิงใกล้วันที่เลือก: ${dateTH(reference.departure_at)}`}</p> : <p className="air-result-flight">ยังไม่มีราคาอ้างอิงที่เชื่อถือได้จากระบบค้นหา</p>}
+        <p>{isExactReference ? 'พบข้อมูลราคาในวันที่เลือกจากระบบค้นหา' : 'สายการบินมีเส้นทางนี้ แต่ TripDeal ยังยืนยันไม่ได้ว่ามีเที่ยวบินตรงในวันที่คุณเลือก'}</p>
+        {reference ? <p className="air-result-flight">{reference.flight_number ? `เที่ยวบิน ${reference.airline}${reference.flight_number} · ` : ''}{isExactReference ? `วันที่ ${dateTH(reference.departure_at)}` : `ราคาอ้างอิงใกล้วันที่เลือก: ${dateTH(reference.departure_at)}`}</p> : <p className="air-result-flight">ยังไม่มีข้อมูลราคา/เที่ยวบินตรงวันที่เลือกที่เชื่อถือได้</p>}
       </div>
       <div className="air-result-price">
-        {reference ? <><strong>฿{money(reference.price)}</strong><span>{trip === 'roundtrip' ? 'ไป–กลับ' : 'เที่ยวเดียว'} / คน</span><small>{isExactReference ? 'ราคาที่พบตรงวัน' : 'ราคาอ้างอิงล่าสุด · ต้องยืนยันอีกครั้ง'}</small></> : <><strong>เช็กราคาจริง</strong><span>กับ {airline?.name || airlineDisplayName(fallback.code)}</span><small>ยืนยันที่นั่งและราคาบนเว็บสายการบิน</small></>}
-        {bookingUrl ? <button onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>ไปที่ {airline?.name || airlineDisplayName(fallback.code)} <ChevronRight size={16}/></button> : <button disabled>ยังไม่มีลิงก์จอง</button>}
+        {isExactReference && reference ? <><strong>฿{money(reference.price)}</strong><span>{trip === 'roundtrip' ? 'ไป–กลับ' : 'เที่ยวเดียว'} / คน</span><small>ราคาที่พบตรงวัน · ต้องยืนยันอีกครั้ง</small></> : reference ? <><strong>฿{money(reference.price)}</strong><span>ราคาอ้างอิงจากวันใกล้เคียง</span><small>ไม่ใช่ราคาของวันที่คุณเลือก</small></> : <><strong>ยังไม่ยืนยันราคา</strong><span>กับ {airline?.name || airlineDisplayName(fallback.code)}</span><small>ตรวจวันและราคาบนเว็บสายการบิน</small></>}
+        {bookingUrl ? <button onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>{isExactReference ? 'ดูเที่ยวบินวันที่เลือก' : 'ตรวจตารางบินกับสายการบิน'} <ChevronRight size={16}/></button> : <button disabled>ยังไม่มีลิงก์จอง</button>}
       </div>
     </article>;
   };
@@ -173,17 +179,21 @@ export default function AirlineSearchPage() {
 
       <div className="air-search-trust"><ShieldCheck size={17}/><div><strong>TripDeal เปรียบเทียบก่อน คุณจ่ายเงินกับสายการบิน</strong><span>รองรับสายการบินไทยและเอเชียใน Directory แล้ว {supportedAirlineCount}+ สายการบิน</span></div></div>
 
-      {loading && <div className="air-search-empty"><Search size={24}/><strong>กำลังค้นหาราคาและสายการบิน...</strong><span>เช็กทั้งราคาตรงวันและราคาอ้างอิงของสายการบินในเส้นทางนี้</span></div>}
+      {loading && <div className="air-search-empty"><Search size={24}/><strong>กำลังค้นหาราคาและเที่ยวบินตรงวันที่เลือก...</strong><span>ผลหลักจะแสดงเฉพาะข้อมูลที่ยืนยันได้ตรงวันเท่านั้น</span></div>}
       {!loading && error && <div className="air-search-empty"><strong>ค้นหาไม่สำเร็จ</strong><span>{error}</span><button onClick={() => window.location.reload()}>ลองอีกครั้ง</button></div>}
 
-      {!loading && !error && sorted.length === 0 && routeFallbacks.length === 0 && <div className="air-search-empty"><strong>ยังไม่พบข้อมูลสำหรับเส้นทางนี้</strong><span>ลองเปลี่ยนวันเดินทาง หรือค้นหาเส้นทางใกล้เคียง</span><button onClick={() => navigate('/')}>แก้ไขการค้นหา</button></div>}
-
-      {!loading && !error && sorted.length === 0 && routeFallbacks.length > 0 && <>
-        <div className="air-search-title"><div><h2>สายการบินที่ให้บริการเส้นทางนี้</h2><p>แสดงราคาอ้างอิงรายสายการบินเท่าที่ระบบค้นพบ แล้วให้ยืนยันราคาจริงกับสายการบิน</p></div><button onClick={() => navigate('/')}>ค้นหาใหม่</button></div>
-        <div className="air-search-list">
-          {[...routeFallbacks].sort((a, b) => (referenceFor(a.code)?.price ?? Number.MAX_SAFE_INTEGER) - (referenceFor(b.code)?.price ?? Number.MAX_SAFE_INTEGER)).map(renderFallbackCard)}
+      {!loading && !error && sorted.length === 0 && <>
+        <div className="air-search-empty">
+          <strong>ยังไม่พบเที่ยวบินที่ยืนยันได้ตรงวันที่เลือก</strong>
+          <span>TripDeal จะไม่เดาว่าสายการบินไหนบินในวันนั้น เพื่อป้องกันการพาไปเจอหน้า “ไม่พบเที่ยวบิน”</span>
+          <button onClick={() => navigate('/')}>เปลี่ยนวันหรือค้นหาใหม่</button>
         </div>
-        <div className="air-search-disclaimer"><strong>ราคาแบบไหนที่กำลังแสดง?</strong><p>ถ้ามีราคาตรงวันที่เลือก TripDeal จะระบุว่า “ราคาที่พบตรงวัน” หาก cache วันนั้นไม่มี ระบบจะใช้ราคาอ้างอิงใกล้วันที่เลือกเพื่อช่วยเปรียบเทียบเท่านั้น ราคาสุดท้ายต้องยืนยันบนเว็บสายการบินเสมอ</p></div>
+        {routeFallbacks.length > 0 && <>
+          <div className="air-search-title"><div><h2>สายการบินที่มีเส้นทางนี้</h2><p>ข้อมูลส่วนนี้เป็นระดับเส้นทาง ยังไม่ถือว่ายืนยันตารางบินของวันที่เลือก</p></div></div>
+          <div className="air-search-list">
+            {[...routeFallbacks].sort((a, b) => (referenceFor(a.code)?.price ?? Number.MAX_SAFE_INTEGER) - (referenceFor(b.code)?.price ?? Number.MAX_SAFE_INTEGER)).map(renderFallbackCard)}
+          </div>
+        </>}
       </>}
 
       {!loading && !error && sorted.length > 0 && <>
@@ -208,9 +218,14 @@ export default function AirlineSearchPage() {
               </div>
             </article>;
           })}
-          {missingFallbacks.map((fallback, index) => renderFallbackCard(fallback, sorted.length + index))}
         </div>
-        <div className="air-search-disclaimer"><strong>เรื่องราคาที่ควรรู้</strong><p>ราคาที่แสดงเป็นข้อมูลค้นพบล่าสุดสำหรับช่วยเปรียบเทียบ ไม่ใช่การล็อกราคา เมื่อกดจอง TripDeal จะพาไปเว็บไซต์ทางการของสายการบินเพื่อยืนยันราคา ที่นั่ง สัมภาระ และชำระเงินจริง</p></div>
+
+        {missingFallbacks.length > 0 && <>
+          <div className="air-search-title"><div><h2>สายการบินอื่นที่มีเส้นทางนี้</h2><p>ยังไม่มีข้อมูลยืนยันว่าบินในวันที่เลือก จึงไม่เอามาปนกับผลราคาหลัก</p></div></div>
+          <div className="air-search-list">{missingFallbacks.map(renderFallbackCard)}</div>
+        </>}
+
+        <div className="air-search-disclaimer"><strong>เรื่องราคาที่ควรรู้</strong><p>ผลหลักใช้เฉพาะข้อมูลที่ระบบค้นพบตรงวันที่เลือก ส่วนข้อมูลระดับเส้นทางจะแยกออกต่างหาก ราคาสุดท้าย ที่นั่ง และตารางบินต้องยืนยันบนเว็บไซต์สายการบินก่อนชำระเงินจริง</p></div>
       </>}
     </main>
 
