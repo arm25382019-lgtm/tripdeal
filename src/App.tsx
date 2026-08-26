@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, ChevronRight, Home, Plane, Search, User } from 'lucide-react';
+import { Bell, ChevronRight, Clock3, Home, Luggage, Plane, Search, User } from 'lucide-react';
 import { Link, Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import TripiAssistant from './components/TripiAssistant';
@@ -19,6 +19,8 @@ type Deal = {
   return_date: string;
   price_thb: number;
   airline_name: string | null;
+  flight_number_out: string | null;
+  flight_number_return: string | null;
   is_direct: boolean;
   baggage_kg: number | null;
   deal_score: number;
@@ -26,8 +28,25 @@ type Deal = {
   destinations: Destination;
 };
 
+type FlightLeg = {
+  label: 'ขาไป' | 'ขากลับ';
+  date: string;
+  departTime: string;
+  arriveTime: string;
+  origin: string;
+  destination: string;
+  originTerminal?: string;
+  destinationTerminal?: string;
+  duration: string;
+  flightNumber: string;
+  aircraft: string;
+  nextDay?: boolean;
+  verifiedDemo?: boolean;
+};
+
 const money = (n: number) => new Intl.NumberFormat('th-TH').format(n);
 const dateTH = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+const fullDateTH = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
 const cityIcon = (city: string) => city === 'Tokyo' ? '🗼' : city === 'Osaka' ? '🏯' : city === 'Fukuoka' ? '🌊' : city === 'Sapporo' ? '❄️' : '✈️';
 const countryFlag = (city: string) => ['Tokyo','Osaka','Fukuoka','Sapporo'].includes(city) ? '🇯🇵' : '✈️';
 const monthMap: Record<string, number> = { 'ก.ย.': 9, 'ต.ค.': 10, 'พ.ย.': 11, 'ธ.ค.': 12 };
@@ -36,6 +55,49 @@ const dayRangeFromLabel = (label: string) => {
   const match = label.match(/(\d+)\D+(\d+)/);
   return match ? [Number(match[1]), Number(match[2])] as const : null;
 };
+
+function scheduleFor(deal: Deal): { outbound: FlightLeg; inbound: FlightLeg } {
+  const exactTokyoExample = deal.destinations.city_name === 'Tokyo' && deal.airline_name === 'Thai AirAsia X' && deal.departure_date === '2026-10-14' && deal.return_date === '2026-10-20';
+
+  if (exactTokyoExample) {
+    return {
+      outbound: {
+        label: 'ขาไป', date: deal.departure_date, departTime: '01:15', arriveTime: '09:45', origin: 'DMK', destination: 'NRT', originTerminal: 'T1', destinationTerminal: 'T2', duration: '6 ชม. 30 นาที', flightNumber: deal.flight_number_out || 'XJ602', aircraft: 'Airbus A330-300', verifiedDemo: true,
+      },
+      inbound: {
+        label: 'ขากลับ', date: deal.return_date, departTime: '21:15', arriveTime: '02:00', origin: 'NRT', destination: 'DMK', originTerminal: 'T2', destinationTerminal: 'T1', duration: '6 ชม. 45 นาที', flightNumber: deal.flight_number_return || 'XJ607', aircraft: 'Airbus A330-300', nextDay: true, verifiedDemo: true,
+      },
+    };
+  }
+
+  return {
+    outbound: {
+      label: 'ขาไป', date: deal.departure_date, departTime: '—', arriveTime: '—', origin: deal.origin_code || 'BKK', destination: deal.destinations.airport_code, duration: 'รอข้อมูลตารางบิน', flightNumber: deal.flight_number_out || 'รอข้อมูล', aircraft: 'รอข้อมูลจาก Flight API',
+    },
+    inbound: {
+      label: 'ขากลับ', date: deal.return_date, departTime: '—', arriveTime: '—', origin: deal.destinations.airport_code, destination: deal.origin_code || 'BKK', duration: 'รอข้อมูลตารางบิน', flightNumber: deal.flight_number_return || 'รอข้อมูล', aircraft: 'รอข้อมูลจาก Flight API',
+    },
+  };
+}
+
+function FlightLegCard({ leg, airline, direct }: { leg: FlightLeg; airline: string; direct: boolean }) {
+  return <section className="flight-leg-card">
+    <div className="flight-leg-head">
+      <div><span className="flight-direction">{leg.label}</span><strong>{fullDateTH(leg.date)}</strong></div>
+      <span className="duration-pill"><Clock3 size={14}/>{leg.duration}</span>
+    </div>
+    <div className="flight-timeline">
+      <div className="timeline-time"><strong>{leg.departTime}</strong><span>{leg.origin}{leg.originTerminal ? ` · ${leg.originTerminal}` : ''}</span></div>
+      <div className="timeline-line"><i/><span/><i/></div>
+      <div className="timeline-time"><strong>{leg.arriveTime}{leg.nextDay && <sup>+1</sup>}</strong><span>{leg.destination}{leg.destinationTerminal ? ` · ${leg.destinationTerminal}` : ''}</span></div>
+    </div>
+    <div className="flight-airline-row">
+      <Plane size={18}/>
+      <div><strong>{airline}</strong><span>{leg.flightNumber} · {leg.aircraft}</span></div>
+    </div>
+    <div className="flight-tags"><span>{direct ? 'เที่ยวบินตรง' : 'มีต่อเครื่อง'}</span>{leg.verifiedDemo ? <span>รายละเอียดตัวอย่างที่ยืนยันจากข้อมูลอ้างอิง</span> : <span>รายละเอียดเต็มจะมาจาก Flight API</span>}</div>
+  </section>;
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <div className="app-shell">
@@ -83,7 +145,7 @@ function HomePage() {
         <h1>อยากเที่ยวที่ไหน?</h1>
         <p>เราช่วยหาช่วงที่ตั๋วคุ้มที่สุดให้</p>
         <div className="search-card">
-          <div><span>ออกเดินทางจาก</span><strong>กรุงเทพ (BKK)</strong></div>
+          <div><span>ออกเดินทางจาก</span><strong>กรุงเทพ (BKK/DMK)</strong></div>
           <button onClick={() => navigate('/find-deal')}>ค้นหาดีล <Search size={18}/></button>
         </div>
         <div className="country-grid">
@@ -100,7 +162,7 @@ function HomePage() {
           <div className="city-visual"><span>{cityIcon(d.destinations.city_name)}</span></div>
           <div className="deal-body">
             <div className="deal-title-row"><div><h3>{d.destinations.city_name} {countryFlag(d.destinations.city_name)}</h3><p>{dateTH(d.departure_date)} – {dateTH(d.return_date)}</p></div><ChevronRight size={18}/></div>
-            <div className="deal-bottom"><strong>฿{money(Number(d.price_thb))}</strong><span className="good">⭐ {d.deal_score}/100</span></div>
+            <div className="deal-bottom"><div className="deal-price"><strong>฿{money(Number(d.price_thb))}</strong><small>ไป–กลับ / คน</small></div><span className="good">⭐ {d.deal_score}/100</span></div>
           </div>
         </button>)}
       </div>}
@@ -120,7 +182,7 @@ function FindDealPage() {
       <div className="panel"><h3>1. อยากไปเมืองไหน?</h3><div className="chips">{['Tokyo','Osaka','Fukuoka','Sapporo'].map(x=><Chip key={x} label={x} active={city===x} onClick={()=>setCity(x)}/>)}</div></div>
       <div className="panel"><h3>2. ช่วงไหนสะดวก?</h3><div className="chips">{['ก.ย.','ต.ค.','พ.ย.','ธ.ค.'].map(x=><Chip key={x} label={x} active={month===x} onClick={()=>setMonth(x)}/>)}</div></div>
       <div className="panel"><h3>3. เที่ยวกี่วัน?</h3><div className="chips">{['3–4 วัน','5–7 วัน','8–10 วัน'].map(x=><Chip key={x} label={x} active={days===x} onClick={()=>setDays(x)}/>)}</div></div>
-      <div className="panel"><h3>4. งบตั๋วต่อคน</h3><div className="chips">{['8,000','10,000','15,000'].map(x=><Chip key={x} label={`ไม่เกิน ${x}`} active={budget===x} onClick={()=>setBudget(x)}/>)}</div></div>
+      <div className="panel"><h3>4. งบตั๋วไป–กลับต่อคน</h3><div className="chips">{['8,000','10,000','15,000'].map(x=><Chip key={x} label={`ไม่เกิน ${x}`} active={budget===x} onClick={()=>setBudget(x)}/>)}</div></div>
       <button className="primary big" onClick={()=>nav(`/results?city=${encodeURIComponent(city)}&month=${encodeURIComponent(month)}&days=${encodeURIComponent(days)}&budget=${budget.replace(',','')}`)}><Search size={19}/> หาดีล</button>
     </div>
   </Shell>;
@@ -162,7 +224,7 @@ function ResultsPage() {
     });
   },[deals, city, budget, month, days, directOnly]);
 
-  return <Shell><section className="soft-head compact-head"><div className="container narrow"><h1>{city}</h1><p>กรุงเทพ (BKK) · {days} · {month}{directOnly ? ' · บินตรง' : ''} · เรียงดีลคุ้มที่สุดก่อน</p></div></section>
+  return <Shell><section className="soft-head compact-head"><div className="container narrow"><h1>{city}</h1><p>กรุงเทพ (BKK/DMK) · {days} · {month}{directOnly ? ' · บินตรง' : ''} · เรียงดีลคุ้มที่สุดก่อน</p></div></section>
     <div className="container narrow section results-section">
       {loading ? <div className="empty-state">กำลังค้นหาดีล...</div> : cityDeals.length === 0 ? <div className="empty-state"><strong>ยังไม่พบดีลที่ตรงเงื่อนไข</strong><span>ลองเพิ่มงบประมาณ หรือเปลี่ยนเมือง/ช่วงเวลา</span><button className="primary" onClick={()=>nav('/find-deal')}>แก้ไขการค้นหา</button></div> : <>
         {fromTripi && <div className="tripi-result-note">✨ Tripi เลือกเงื่อนไขนี้ให้จากบทสนทนาของคุณ</div>}
@@ -176,7 +238,7 @@ function ResultsPage() {
               <div className="score">Deal Score ⭐ {d.deal_score}/100 <span><i style={{width:`${d.deal_score}%`}}/></span></div>
               {i===0 && <span className="value-note">ราคาดีที่สุดในชุดที่พบตอนนี้</span>}
             </div>
-            <div className="price"><strong>฿{money(Number(d.price_thb))}</strong><small>{d.deal_label || 'ดีลคุ้ม'}</small><span className="view-link">ดูเที่ยวบิน <ChevronRight size={15}/></span></div>
+            <div className="price"><strong>฿{money(Number(d.price_thb))}</strong><span className="price-caption">ไป–กลับ / คน</span><small>{d.deal_label || 'ดีลคุ้ม'}</small><span className="view-link">ดูเที่ยวบิน <ChevronRight size={15}/></span></div>
           </button>)}
         </div>
       </>}
@@ -196,18 +258,32 @@ function FlightPage() {
   },[params]);
   if(loading) return <Shell><div className="container section empty-state">กำลังโหลดรายละเอียด...</div></Shell>;
   if(!deal) return <Shell><div className="container section empty-state"><strong>ไม่พบเที่ยวบินนี้</strong><Link to="/">กลับหน้าแรก</Link></div></Shell>;
-  return <Shell><div className="container narrow section"><div className="flight-hero"><div><span>{deal.destinations.city_name}</span><strong>{dateTH(deal.departure_date)} – {dateTH(deal.return_date)}</strong></div><b>{cityIcon(deal.destinations.city_name)}</b></div>
-    <h2>รายละเอียดเที่ยวบิน</h2><div className="flight-card"><p>{deal.airline_name ?? 'Airline'}</p><div className="route"><strong>00:45<small>DMK</small></strong><Plane/><strong>09:10<small>{deal.destinations.airport_code}</small></strong></div><p>บินตรง · 6 ชม. 25 นาที</p></div>
-    <div className="flight-card"><p>เที่ยวกลับ</p><div className="route"><strong>10:15<small>{deal.destinations.airport_code}</small></strong><Plane/><strong>15:00<small>DMK</small></strong></div><p>บินตรง · 6 ชม. 45 นาที</p></div>
-    <div className="price-box"><div><span>ราคาต่อคน</span><strong>฿{money(Number(deal.price_thb))}</strong></div><span className="good">{deal.deal_label || 'ราคาดี'}</span></div>
-    <button className="primary big" onClick={()=>setOpen(true)}>จองเที่ยวบินนี้</button>
-    {open&&<div className="modal-backdrop"><div className="modal"><h3>เวอร์ชันทดลอง</h3><p>ขั้นต่อไปจะเชื่อมต่อพาร์ทเนอร์จองตั๋วจริง ตอนนี้ยังไม่มีการชำระเงินหรือออกตั๋ว</p><button className="primary" onClick={()=>setOpen(false)}>เข้าใจแล้ว</button></div></div>}
+
+  const schedule = scheduleFor(deal);
+  const airline = deal.airline_name ?? 'สายการบิน';
+
+  return <Shell><div className="container narrow section flight-page">
+    <div className="flight-hero"><div><span>{deal.destinations.city_name}</span><strong>{dateTH(deal.departure_date)} – {dateTH(deal.return_date)} · ไป–กลับ</strong></div><b>{cityIcon(deal.destinations.city_name)}</b></div>
+    <div className="flight-title-row"><div><h2>รายละเอียดเที่ยวบิน</h2><p>แยกขาไปและขากลับให้ตรวจสอบก่อนจอง</p></div><span className="good">Deal Score {deal.deal_score}</span></div>
+
+    <FlightLegCard leg={schedule.outbound} airline={airline} direct={deal.is_direct}/>
+    <FlightLegCard leg={schedule.inbound} airline={airline} direct={deal.is_direct}/>
+
+    <div className="flight-benefits">
+      <div><Luggage size={19}/><span>สัมภาระ</span><strong>{deal.baggage_kg ?? 20} kg</strong></div>
+      <div><Plane size={19}/><span>เส้นทาง</span><strong>{deal.is_direct ? 'บินตรง' : 'มีต่อเครื่อง'}</strong></div>
+    </div>
+
+    <div className="price-box roundtrip-price"><div><span>ราคาไป–กลับ / คน</span><strong>฿{money(Number(deal.price_thb))}</strong><small>รวมเที่ยวไป + เที่ยวกลับในดีลนี้</small></div><span className="good">{deal.deal_label || 'ราคาดี'}</span></div>
+    <p className="price-disclaimer">ราคาปัจจุบันใน TripDeal ยังเป็นข้อมูลดีลตัวอย่าง ระบบจะตรวจสอบราคา ภาษี ค่าธรรมเนียม และที่นั่งว่างอีกครั้งเมื่อเชื่อม Flight API จริง</p>
+    <button className="primary big" onClick={()=>setOpen(true)}>ตรวจสอบราคาก่อนจอง</button>
+    {open&&<div className="modal-backdrop"><div className="modal"><h3>เวอร์ชันทดลอง</h3><p>รายละเอียดหน้าเที่ยวบินพร้อมแล้วครับ ขั้นต่อไปคือเชื่อม Flight API เพื่อดึงราคา เวลา เทอร์มินัล สัมภาระ และที่นั่งว่างแบบสดก่อนส่งต่อไปจองจริง</p><button className="primary" onClick={()=>setOpen(false)}>เข้าใจแล้ว</button></div></div>}
   </div></Shell>;
 }
 
 function AlertsPage(){
   const [enabled,setEnabled]=useState(true);
-  return <Shell><section className="soft-head compact-head"><div className="container narrow"><h1>🔔 แจ้งเตือนราคา</h1><p>ตั้งงบไว้ แล้วค่อยกลับมาเมื่อเจอดีลที่ใช่</p></div></section><div className="container narrow section alerts-section"><div className="panel form compact-form"><div className="form-grid"><label>ปลายทาง<input defaultValue="Tokyo"/></label><label>งบสูงสุด<input defaultValue="8000" type="number"/></label></div><button className="primary">ตั้งแจ้งเตือน</button></div><div className="results-header"><h2>การแจ้งเตือนของฉัน</h2></div><div className="alert-card"><div><h3>Tokyo, Japan</h3><p>5–7 วัน · งบไม่เกิน ฿8,000</p></div><button className={enabled?'toggle on':'toggle'} onClick={()=>setEnabled(!enabled)} aria-label="เปิดปิดการแจ้งเตือน"><span/></button></div></div></Shell>
+  return <Shell><section className="soft-head compact-head"><div className="container narrow"><h1>🔔 แจ้งเตือนราคา</h1><p>ตั้งงบไว้ แล้วค่อยกลับมาเมื่อเจอดีลที่ใช่</p></div></section><div className="container narrow section alerts-section"><div className="panel form compact-form"><div className="form-grid"><label>ปลายทาง<input defaultValue="Tokyo"/></label><label>งบสูงสุด<input defaultValue="8000" type="number"/></label></div><button className="primary">ตั้งแจ้งเตือน</button></div><div className="results-header"><h2>การแจ้งเตือนของฉัน</h2></div><div className="alert-card"><div><h3>Tokyo, Japan</h3><p>5–7 วัน · งบไป–กลับไม่เกิน ฿8,000/คน</p></div><button className={enabled?'toggle on':'toggle'} onClick={()=>setEnabled(!enabled)} aria-label="เปิดปิดการแจ้งเตือน"><span/></button></div></div></Shell>
 }
 
 function AccountPage(){ return <Shell><div className="container narrow section account-section"><div className="profile"><div className="avatar">TD</div><div><h2>ผู้ใช้งาน TripDeal</h2><p>บัญชีทดลอง</p></div></div>{['การจองของฉัน','แจ้งเตือนราคา','รายการที่บันทึก','ข้อมูลผู้โดยสาร','ช่วยเหลือ','ตั้งค่า'].map(x=><div className="menu-row" key={x}>{x}<span>›</span></div>)}</div></Shell> }
