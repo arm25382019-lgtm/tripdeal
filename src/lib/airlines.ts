@@ -12,6 +12,16 @@ export type RouteAirlineFallback = {
   note?: string;
 };
 
+export type DirectBookingParams = {
+  origin?: string | null;
+  destination?: string | null;
+  depart?: string | null;
+  returnDate?: string | null;
+  trip?: 'oneway' | 'roundtrip';
+  adults?: number;
+  routeBookingUrl?: string | null;
+};
+
 const AIRLINES: Record<string, AirlineInfo> = {
   // Thailand
   TG: { code: 'TG', name: 'Thai Airways', country: 'Thailand', bookingUrl: 'https://www.thaiairways.com/' },
@@ -138,18 +148,76 @@ export function getRouteFallbackAirlines(origin?: string | null, destination?: s
   return ROUTE_FALLBACKS[`${String(origin).toUpperCase()}-${String(destination).toUpperCase()}`] || [];
 }
 
-export function buildDirectBookingUrl(code?: string | null, routeBookingUrl?: string | null): string | null {
+function toAirAsiaDate(value?: string | null): string | null {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function buildAirAsiaFlightResultsUrl(params: DirectBookingParams): string | null {
+  const origin = String(params.origin || '').trim().toUpperCase();
+  const destination = String(params.destination || '').trim().toUpperCase();
+  const departDate = toAirAsiaDate(params.depart);
+  const returnDate = toAirAsiaDate(params.returnDate);
+  if (!/^[A-Z0-9]{3}$/.test(origin) || !/^[A-Z0-9]{3}$/.test(destination) || !departDate) return null;
+
+  const trip = params.trip === 'roundtrip' ? 'roundtrip' : 'oneway';
+  const adults = Math.min(9, Math.max(1, Math.round(Number(params.adults || 1))));
+  const query = new URLSearchParams({
+    adult: String(adults),
+    airlineProfile: 'k,d,g',
+    ancillaryAbTest: 'false',
+    cabinClass: 'economy',
+    child: '0',
+    currency: 'THB',
+    departDate,
+    destination,
+    infant: '0',
+    isAirasiaFlightOnly: 'false',
+    isDC: 'false',
+    isOC: 'false',
+    j: 'cds',
+    locale: 'th-th',
+    origin,
+    providers: '',
+    taIDs: '',
+    tripType: trip === 'roundtrip' ? 'R' : 'O',
+    type: 'paired',
+    uce: 'true',
+    upsellPremiumFlatbedWidget: 'true',
+    upsellWidget: 'true',
+  });
+  if (trip === 'roundtrip' && returnDate) query.set('returnDate', returnDate);
+  return `https://www.airasia.com/v2/flights/search/?${query.toString()}`;
+}
+
+function maybeWrapAirAsiaAffiliate(targetUrl: string): string {
+  const affiliateUrl = import.meta.env.VITE_AIRASIA_AFFILIATE_URL as string | undefined;
+  if (!affiliateUrl?.trim()) return targetUrl;
+
+  // If Partnerize supplies a deep-link template later, set the Vercel variable with
+  // a {url} placeholder. Until then, preserve the exact itinerary UX instead of
+  // replacing it with a generic affiliate landing page.
+  const template = affiliateUrl.trim();
+  if (template.includes('{url}')) return template.replace('{url}', encodeURIComponent(targetUrl));
+  return targetUrl;
+}
+
+export function buildDirectBookingUrl(code?: string | null, paramsOrRoute?: DirectBookingParams | string | null): string | null {
   const airline = getAirline(code);
   if (!airline) return null;
 
+  const params: DirectBookingParams = typeof paramsOrRoute === 'string'
+    ? { routeBookingUrl: paramsOrRoute }
+    : (paramsOrRoute || {});
+
   if (airline.airAsiaGroup) {
-    // Public affiliate links are not secrets. When Partnerize approves TripDeal,
-    // put the approved AirAsia tracking/deep-link URL in this Vite variable.
-    const affiliateUrl = import.meta.env.VITE_AIRASIA_AFFILIATE_URL as string | undefined;
-    if (affiliateUrl?.trim()) return affiliateUrl.trim();
+    const resultsUrl = buildAirAsiaFlightResultsUrl(params);
+    if (resultsUrl) return maybeWrapAirAsiaAffiliate(resultsUrl);
   }
 
-  if (routeBookingUrl?.trim()) return routeBookingUrl.trim();
+  if (params.routeBookingUrl?.trim()) return params.routeBookingUrl.trim();
   return airline.bookingUrl;
 }
 
