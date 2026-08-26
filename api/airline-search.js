@@ -28,6 +28,7 @@ function mapRows(payload, { origin, destination, oneWay }) {
     duration_minutes: Number(row?.duration ?? 0),
     found_at: normalizeDate(row?.found_at),
     source: 'flight_price_discovery',
+    price_basis: oneWay ? 'one_way_discovery' : 'roundtrip_discovery',
   })).filter((row) => row.departure_at && row.price > 0 && row.airline && (oneWay || row.return_at));
 }
 
@@ -68,6 +69,49 @@ function uniqueRows(rows) {
     if (!existing || row.price < existing.price) unique.set(key, row);
   }
   return [...unique.values()];
+}
+
+function cheapestByAirline(rows) {
+  const byAirline = new Map();
+  for (const row of rows) {
+    const current = byAirline.get(row.airline);
+    if (!current || row.price < current.price) byAirline.set(row.airline, row);
+  }
+  return byAirline;
+}
+
+function pairExactOneWays(outboundRows, inboundRows) {
+  const outbound = cheapestByAirline(outboundRows);
+  const inbound = cheapestByAirline(inboundRows);
+  const result = [];
+
+  for (const [airline, out] of outbound.entries()) {
+    const back = inbound.get(airline);
+    if (!back) continue;
+    result.push({
+      origin: out.origin,
+      destination: out.destination,
+      origin_airport: out.origin_airport,
+      destination_airport: out.destination_airport,
+      price: Number(out.price) + Number(back.price),
+      outbound_price: Number(out.price),
+      return_price: Number(back.price),
+      currency: out.currency || back.currency || 'THB',
+      airline,
+      flight_number: out.flight_number || '',
+      return_flight_number: back.flight_number || '',
+      departure_at: out.departure_at,
+      return_at: back.departure_at,
+      transfers: Number(out.transfers ?? 0),
+      return_transfers: Number(back.transfers ?? 0),
+      duration_minutes: Number(out.duration_minutes ?? 0) + Number(back.duration_minutes ?? 0),
+      found_at: out.found_at || back.found_at || null,
+      source: 'paired_one_way_discovery',
+      price_basis: 'sum_of_exact_one_way_discovery',
+    });
+  }
+
+  return result.sort((a, b) => a.price - b.price);
 }
 
 function dayDistance(iso, requestedDate) {
@@ -130,13 +174,43 @@ export default async function handler(req, res) {
       market,
     })));
 
-    const exactRows = uniqueRows(exactSettled
+    let exactRows = uniqueRows(exactSettled
       .filter((x) => x.status === 'fulfilled')
       .flatMap((x) => x.value || []));
 
-    // A date-specific cache can contain only the cheapest fare discovered in a market.
-    // Querying the month as well gives TripDeal a better chance of identifying other
-    // airlines that operate the route, while keeping those values clearly labelled as references.
+    let splitSettled = [];
+    if (!oneWay) {
+      const outboundTasks = MARKETS.map((market) => fetchPrices({
+        token,
+        origin,
+        destination,
+        departureAt: departureDate,
+        oneWay: true,
+        directOnly,
+        market,
+      }));
+      const inboundTasks = MARKETS.map((market) => fetchPrices({
+        token,
+        origin: destination,
+        destination: origin,
+        departureAt: returnDate,
+        oneWay: true,
+        directOnly,
+        market,
+      }));
+      splitSettled = await Promise.allSettled([...outboundTasks, ...inboundTasks]);
+      const outboundRows = uniqueRows(splitSettled.slice(0, MARKETS.length)
+        .filter((x) => x.status === 'fulfilled')
+        .flatMap((x) => x.value || []));
+      const inboundRows = uniqueRows(splitSettled.slice(MARKETS.length)
+        .filter((x) => x.status === 'fulfilled')
+        .flatMap((x) => x.value || []));
+      const paired = pairExactOneWays(outboundRows, inboundRows);
+
+      const exactAirlines = new Set(exactRows.map((row) => row.airline));
+      exactRows = [...exactRows, ...paired.filter((row) => !exactAirlines.has(row.airline))];
+    }
+
     const departureMonth = departureDate.slice(0, 7);
     const returnMonth = returnDate ? returnDate.slice(0, 7) : undefined;
     const monthSettled = await Promise.allSettled(MARKETS.map((market) => fetchPrices({
@@ -154,7 +228,8 @@ export default async function handler(req, res) {
       .filter((x) => x.status === 'fulfilled')
       .flatMap((x) => x.value || []));
 
-    const allFailures = [...exactSettled, ...monthSettled].every((x) => x.status === 'rejected');
+    const everyRequest = [...exactSettled, ...splitSettled, ...monthSettled];
+    const allFailures = everyRequest.length > 0 && everyRequest.every((x) => x.status === 'rejected');
     if (allFailures) {
       console.error('Airline search provider unavailable', exactSettled.map((x) => x.reason?.payload || x.reason));
       return res.status(502).json({ configured: true, error: 'Flight price search is temporarily unavailable' });
@@ -166,8 +241,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       configured: true,
       provider: 'flight_price_discovery',
-      data_type: prices.length ? 'recent_exact_date_fares' : 'route_reference_fares',
-      note: 'Prices are recent discovery data. Final availability, fare and payment are confirmed on the airline website.',
+      data_type: prices.length ? (prices.some((row) => row.price_basis === 'sum_of_exact_one_way_discovery') ? 'exact_dates_with_paired_one_way_fallback' : 'recent_exact_date_fares') : 'route_reference_fares',
+      note: 'Prices are recent discovery data. Paired one-way totals are estimates made from exact-date outbound and inbound discoveries. Final availability, fare and payment are confirmed on the airline website.',
       search: { origin, destination, departure_date: departureDate, return_date: oneWay ? null : returnDate, one_way: oneWay },
       markets_checked: MARKETS,
       prices,
