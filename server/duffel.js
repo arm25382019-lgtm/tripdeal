@@ -127,16 +127,17 @@ export function normalizeOffer(offer) {
   };
 }
 
-export async function searchExactFlights({ origin, destination, departureDate, returnDate, directOnly = false }) {
+export async function searchExactFlights({ origin, destination, departureDate, returnDate, directOnly = false, adults = 1 }) {
+  const safeAdults = Math.min(9, Math.max(1, Math.round(Number(adults || 1))));
+  const slices = [{ origin, destination, departure_date: departureDate }];
+  if (returnDate) slices.push({ origin: destination, destination: origin, departure_date: returnDate });
+
   const body = {
     data: {
-      slices: [
-        { origin, destination, departure_date: departureDate },
-        { origin: destination, destination: origin, departure_date: returnDate },
-      ],
-      passengers: [{ type: 'adult' }],
+      slices,
+      passengers: Array.from({ length: safeAdults }, () => ({ type: 'adult' })),
       cabin_class: 'economy',
-      max_connections: directOnly ? 0 : 1,
+      max_connections: directOnly ? 0 : 2,
     },
   };
 
