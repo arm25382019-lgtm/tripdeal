@@ -1,54 +1,60 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, ChevronRight, Home, Plane, User } from 'lucide-react';
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { supabase } from './lib/supabase';
 import TripiAssistant from './components/TripiAssistant';
 import FlightSearchEngine from './components/FlightSearchEngine';
-
-type Destination = {
-  id: string;
-  city_name: string;
-  country_name_th: string;
-  airport_code: string;
-  is_featured: boolean;
-};
-
-type Deal = {
-  id: string;
-  origin_code: string;
-  departure_date: string;
-  return_date: string;
-  price_thb: number;
-  airline_name: string | null;
-  is_direct: boolean;
-  baggage_kg: number | null;
-  deal_score: number;
-  deal_label: string | null;
-  destinations: Destination;
-};
 
 type CountryOption = {
   key: 'ไทย' | 'ญี่ปุ่น' | 'เกาหลี' | 'ไต้หวัน' | 'จีน';
   label: string;
   flag: string;
-  aliases: string[];
+};
+
+type FeaturedDeal = {
+  city: string;
+  country: string;
+  flag: string;
+  destination_code: string;
+  origin_airport: string;
+  destination_airport: string;
+  departure_at: string;
+  return_at: string;
+  price: number;
+  currency: string;
+  airline: string;
+  flight_number: string;
+  transfers: number;
+  return_transfers: number;
+  deal_score: number;
+  source: string;
+};
+
+type FeaturedResponse = {
+  configured: boolean;
+  country: string;
+  deals?: FeaturedDeal[];
+  error?: string;
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [
-  { key: 'ไทย', label: 'ไทย', flag: '🇹🇭', aliases: ['ไทย', 'ประเทศไทย', 'Thailand'] },
-  { key: 'ญี่ปุ่น', label: 'ญี่ปุ่น', flag: '🇯🇵', aliases: ['ญี่ปุ่น', 'Japan'] },
-  { key: 'เกาหลี', label: 'เกาหลี', flag: '🇰🇷', aliases: ['เกาหลี', 'เกาหลีใต้', 'South Korea', 'Korea'] },
-  { key: 'ไต้หวัน', label: 'ไต้หวัน', flag: '🇹🇼', aliases: ['ไต้หวัน', 'Taiwan'] },
-  { key: 'จีน', label: 'จีน', flag: '🇨🇳', aliases: ['จีน', 'China'] },
+  { key: 'ไทย', label: 'ไทย', flag: '🇹🇭' },
+  { key: 'ญี่ปุ่น', label: 'ญี่ปุ่น', flag: '🇯🇵' },
+  { key: 'เกาหลี', label: 'เกาหลี', flag: '🇰🇷' },
+  { key: 'ไต้หวัน', label: 'ไต้หวัน', flag: '🇹🇼' },
+  { key: 'จีน', label: 'จีน', flag: '🇨🇳' },
 ];
 
 const money = (n: number) => new Intl.NumberFormat('th-TH').format(n);
-const dateTH = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-const cityIcon = (city: string) => city === 'Tokyo' ? '🗼' : city === 'Osaka' ? '🏯' : city === 'Fukuoka' ? '🌊' : city === 'Sapporo' ? '❄️' : city === 'Seoul' ? '🏙️' : city === 'Taipei' ? '🏮' : city === 'Shanghai' ? '🌆' : city === 'Beijing' ? '🏯' : city === 'Chiang Mai' ? '⛰️' : city === 'Phuket' ? '🏝️' : '✈️';
-const flagForCountry = (country?: string) => {
-  const normalized = String(country || '').trim();
-  const option = COUNTRY_OPTIONS.find((item) => item.aliases.includes(normalized));
-  return option?.flag || '✈️';
+const dateTH = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+const cityIcon = (city: string) => {
+  const icons: Record<string, string> = {
+    Tokyo: '🗼', Osaka: '🏯', Fukuoka: '🌊', Sapporo: '❄️',
+    Seoul: '🏙️', Busan: '🌉', Jeju: '🌋',
+    Taipei: '🏮', Kaohsiung: '🌅',
+    Shanghai: '🌆', Beijing: '🏯', Guangzhou: '🌃', Shenzhen: '🏙️', Kunming: '🌸',
+    'Chiang Mai': '⛰️', Phuket: '🏝️', Krabi: '🌴', 'Hat Yai': '🌇', 'Chiang Rai': '🛕', 'Koh Samui': '🏖️',
+  };
+  return icons[city] || '✈️';
 };
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -68,31 +74,32 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function HomePage() {
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState<CountryOption['key']>('ญี่ปุ่น');
+  const [featuredDeals, setFeaturedDeals] = useState<FeaturedDeal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.from('deals').select('*, destinations(*)').eq('is_active', true).order('deal_score', { ascending: false }).then(({ data }) => {
-      setDeals((data as Deal[]) ?? []);
-      setLoading(false);
-    });
-  }, []);
-
-  const featuredDeals = useMemo(() => {
-    const selected = COUNTRY_OPTIONS.find((item) => item.key === selectedCountry);
-    const aliases = selected?.aliases ?? [selectedCountry];
-    const seen = new Set<string>();
-
-    return deals.filter((d) => {
-      const city = d.destinations?.city_name;
-      const country = String(d.destinations?.country_name_th || '').trim();
-      if (!city || !aliases.includes(country) || seen.has(city)) return false;
-      seen.add(city);
-      return true;
-    }).slice(0, 4);
-  }, [deals, selectedCountry]);
+    let active = true;
+    setLoading(true);
+    setError('');
+    fetch(`/api/featured-deals?country=${encodeURIComponent(selectedCountry)}`)
+      .then(async (res) => {
+        const data = await res.json() as FeaturedResponse;
+        if (!res.ok) throw new Error(data.error || 'โหลดดีลไม่สำเร็จ');
+        if (!active) return;
+        setFeaturedDeals(data.deals || []);
+        if (!data.configured) setError('ระบบราคายังไม่พร้อมใช้งาน');
+      })
+      .catch((e) => {
+        if (!active) return;
+        setFeaturedDeals([]);
+        setError(e instanceof Error ? e.message : 'โหลดดีลไม่สำเร็จ');
+      })
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [selectedCountry]);
 
   const selectCountry = (country: CountryOption['key']) => {
     setSelectedCountry(country);
@@ -102,6 +109,27 @@ function HomePage() {
   };
 
   const selectedCountryMeta = COUNTRY_OPTIONS.find((item) => item.key === selectedCountry)!;
+
+  const openFeatured = (d: FeaturedDeal) => {
+    const q = new URLSearchParams({
+      origin: d.origin_airport || 'BKK',
+      destination: d.destination_airport || d.destination_code,
+      origin_name: d.origin_airport || 'กรุงเทพ',
+      destination_name: d.city,
+      trip: 'roundtrip',
+      depart: d.departure_at,
+      return: d.return_at,
+      adults: '1',
+      price: String(d.price),
+      airline_code: d.airline || '',
+      flight: d.flight_number || '',
+      transfers: String(d.transfers || 0),
+      return_transfers: String(d.return_transfers || 0),
+      score: String(d.deal_score || 0),
+      back: '/',
+    });
+    navigate(`/book?${q.toString()}`);
+  };
 
   return <Shell>
     <section className="hero">
@@ -124,13 +152,15 @@ function HomePage() {
 
     <section className="container section home-deals" id="featured-deals">
       <div className="section-title"><h2>🔥 ดีลน่าไปตอนนี้ · {selectedCountryMeta.flag} {selectedCountryMeta.label}</h2><Link to="/find-deal">ค้นหาเอง</Link></div>
-      {loading ? <div className="empty-state">กำลังโหลดดีล...</div> : featuredDeals.length === 0 ? <div className="empty-state"><strong>ยังไม่มีดีลของ{selectedCountryMeta.label}ในตอนนี้</strong><span>ลองค้นหาเที่ยวบินเองด้านบน หรือเลือกประเทศอื่นได้เลย</span></div> :
+      <p style={{marginTop:'-8px',color:'#64748b',fontSize:'13px'}}>คัดจากราคาที่พบล่าสุดเพื่อช่วยเลือกช่วงเดินทาง · ราคาจริงยืนยันอีกครั้งกับสายการบิน</p>
+      {loading ? <div className="empty-state">กำลังค้นหาดีลล่าสุดของ{selectedCountryMeta.label}...</div> : error ? <div className="empty-state"><strong>โหลดดีลไม่สำเร็จ</strong><span>{error}</span></div> : featuredDeals.length === 0 ? <div className="empty-state"><strong>ยังไม่มีดีลของ{selectedCountryMeta.label}ในตอนนี้</strong><span>ลองค้นหาเที่ยวบินเองด้านบน หรือเลือกประเทศอื่นได้เลย</span></div> :
       <div className="deal-grid">
-        {featuredDeals.map(d => <button key={d.id} className="deal-card compact" onClick={() => navigate(`/flight?id=${d.id}`)}>
-          <div className="city-visual"><span>{cityIcon(d.destinations.city_name)}</span></div>
+        {featuredDeals.slice(0, 4).map((d, i) => <button key={`${d.city}-${d.departure_at}-${i}`} className="deal-card compact" onClick={() => openFeatured(d)}>
+          <div className="city-visual"><span>{cityIcon(d.city)}</span></div>
           <div className="deal-body">
-            <div className="deal-title-row"><div><h3>{d.destinations.city_name} {flagForCountry(d.destinations.country_name_th)}</h3><p>{dateTH(d.departure_date)} – {dateTH(d.return_date)}</p></div><ChevronRight size={18}/></div>
-            <div className="deal-bottom"><div className="deal-price"><strong>฿{money(Number(d.price_thb))}</strong><small>ราคาอ้างอิง / คน</small></div><span className="good">⭐ {d.deal_score}/100</span></div>
+            <div className="deal-title-row"><div><h3>{d.city} {selectedCountryMeta.flag}</h3><p>{dateTH(d.departure_at)} – {dateTH(d.return_at)}</p></div><ChevronRight size={18}/></div>
+            <div className="deal-bottom"><div className="deal-price"><strong>฿{money(Number(d.price))}</strong><small>ราคาที่พบล่าสุด / คน</small></div><span className="good">⭐ {d.deal_score}/100</span></div>
+            <small style={{color:'#64748b'}}>{d.airline ? `สายการบิน ${d.airline}` : 'ยืนยันสายการบินก่อนจอง'} · {d.transfers === 0 && d.return_transfers === 0 ? 'บินตรง' : 'มีต่อเครื่อง'}</small>
           </div>
         </button>)}
       </div>}
