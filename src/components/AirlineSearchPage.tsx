@@ -99,11 +99,15 @@ export default function AirlineSearchPage() {
   const referenceFor = (code: string) => referencePrices.find((row) => row.airline === code);
 
   const openDeal = (row: SearchPrice, index: number) => {
+    const dealOrigin = (row.origin_airport || row.origin || origin).toUpperCase();
+    const dealDestination = (row.destination_airport || row.destination || destination).toUpperCase();
+    const dealOriginInfo = getAirport(dealOrigin);
+    const dealDestinationInfo = getAirport(dealDestination);
     const q = new URLSearchParams({
-      origin,
-      destination,
-      origin_name: originInfo?.city || origin,
-      destination_name: destinationInfo?.city || destination,
+      origin: dealOrigin,
+      destination: dealDestination,
+      origin_name: dealOriginInfo?.city || originInfo?.city || dealOrigin,
+      destination_name: dealDestinationInfo?.city || destinationInfo?.city || dealDestination,
       depart: row.departure_at || depart,
       trip,
       adults: String(adults),
@@ -121,7 +125,15 @@ export default function AirlineSearchPage() {
 
   const renderFallbackCard = (fallback: ReturnType<typeof getRouteFallbackAirlines>[number], index: number) => {
     const airline = getAirline(fallback.code);
-    const bookingUrl = buildDirectBookingUrl(fallback.code, fallback.routeBookingUrl);
+    const bookingUrl = buildDirectBookingUrl(fallback.code, {
+      origin,
+      destination,
+      depart,
+      returnDate,
+      trip,
+      adults,
+      routeBookingUrl: fallback.routeBookingUrl,
+    });
     const reference = referenceFor(fallback.code);
     const isExactReference = reference?.reference_type === 'exact_date';
     return <article className={index === 0 && sorted.length === 0 ? 'air-result-card best' : 'air-result-card'} key={`${origin}-${destination}-${fallback.code}`}>
