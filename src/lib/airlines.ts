@@ -94,18 +94,33 @@ const AIRLINES: Record<string, AirlineInfo> = {
 };
 
 const ROUTE_FALLBACKS: Record<string, RouteAirlineFallback[]> = {
-  // Verified public direct route pages. These are used only when the price-discovery
-  // provider has no cached fare for the exact requested date.
-  'DMK-SNO': [{
-    code: 'FD',
-    routeBookingUrl: 'https://www.airasia.com/flights/th/th/from-bangkok-dmk-to-sakon-nakhon-sno/',
-    note: 'มีเที่ยวบินตรงในเส้นทางนี้ ตรวจราคาและที่นั่งล่าสุดกับ AirAsia',
-  }],
-  'SNO-DMK': [{
-    code: 'FD',
-    routeBookingUrl: 'https://www.airasia.com/flights/th/th/from-sakon-nakhon-sno-to-bangkok-dmk/',
-    note: 'มีเที่ยวบินตรงในเส้นทางนี้ ตรวจราคาและที่นั่งล่าสุดกับ AirAsia',
-  }],
+  // Used only when the price-discovery provider does not return every airline
+  // for the requested date. Final inventory and payment are always confirmed
+  // on the airline's own website.
+  'DMK-SNO': [
+    {
+      code: 'DD',
+      routeBookingUrl: 'https://www.nokair.com/',
+      note: 'Nok Air มีเที่ยวบินตรง ดอนเมือง → สกลนคร ตรวจเวลาและราคาล่าสุดกับสายการบิน',
+    },
+    {
+      code: 'FD',
+      routeBookingUrl: 'https://www.airasia.com/flights/th/th/from-bangkok-dmk-to-sakon-nakhon-sno/',
+      note: 'Thai AirAsia มีเที่ยวบินตรง ดอนเมือง → สกลนคร ตรวจเวลาและราคาล่าสุดกับสายการบิน',
+    },
+  ],
+  'SNO-DMK': [
+    {
+      code: 'DD',
+      routeBookingUrl: 'https://www.nokair.com/',
+      note: 'Nok Air มีเที่ยวบินตรง สกลนคร → ดอนเมือง ตรวจเวลาและราคาล่าสุดกับสายการบิน',
+    },
+    {
+      code: 'FD',
+      routeBookingUrl: 'https://www.airasia.com/flights/th/th/from-sakon-nakhon-sno-to-bangkok-dmk/',
+      note: 'Thai AirAsia มีเที่ยวบินตรง สกลนคร → ดอนเมือง ตรวจเวลาและราคาล่าสุดกับสายการบิน',
+    },
+  ],
 };
 
 export function getAirline(code?: string | null): AirlineInfo | null {
