@@ -25,13 +25,23 @@ export default function AirlineBookingPage() {
   const score = Number(params.get('score') || 0);
   const back = params.get('back') || '/';
   const airline = getAirline(airlineCode);
-  const bookingUrl = buildDirectBookingUrl(airlineCode);
+  const bookingUrl = buildDirectBookingUrl(airlineCode, {
+    origin,
+    destination,
+    depart,
+    returnDate,
+    trip,
+    adults,
+  });
   const affiliateReady = isAirAsiaAffiliateReady(airlineCode);
   const totalReference = price * adults;
 
   if (!destination || !depart || !price) return <div className="air-book-page"><div className="air-book-empty"><strong>ข้อมูลเที่ยวบินไม่ครบ</strong><button onClick={() => navigate('/')}>กลับไปค้นหา</button></div></div>;
 
   const direct = transfers === 0 && (trip === 'oneway' || returnTransfers === 0);
+  const primaryLabel = airline?.airAsiaGroup
+    ? `เลือกเที่ยวบินกับ ${airline.name}`
+    : `ไปจองกับ ${airline?.name || airlineDisplayName(airlineCode)}`;
 
   return <div className="air-book-page">
     <header className="air-book-topbar">
@@ -76,10 +86,10 @@ export default function AirlineBookingPage() {
       </section>
 
       <div className="air-book-actions">
-        {bookingUrl ? <button className="air-book-primary" onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>ไปจองกับ {airline?.name || airlineDisplayName(airlineCode)} <ChevronRight size={18}/></button> : <button className="air-book-primary" disabled>ยังไม่รองรับลิงก์จองตรงสายการบินนี้</button>}
-        {airline?.airAsiaGroup && <p className="airasia-note">AirAsia {affiliateReady ? 'เชื่อม Affiliate Tracking แล้ว' : 'ตอนนี้เปิดเว็บทางการก่อน และจะเปิด Affiliate Tracking เมื่อ Partnerize อนุมัติ'}</p>}
+        {bookingUrl ? <button className="air-book-primary" onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>{primaryLabel} <ChevronRight size={18}/></button> : <button className="air-book-primary" disabled>ยังไม่รองรับลิงก์จองตรงสายการบินนี้</button>}
+        {airline?.airAsiaGroup && <p className="airasia-note">ระบบจะส่งเส้นทาง วันที่ และจำนวนผู้โดยสารไปยังหน้าเลือกเที่ยวบินของ AirAsia โดยอัตโนมัติ {affiliateReady ? '· Affiliate Tracking พร้อมใช้งาน' : '· Affiliate Tracking จะเปิดหลัง Partnerize อนุมัติ'}</p>}
         <button className="air-book-secondary" onClick={() => navigate(back)}>กลับไปดูดีลอื่น</button>
-        <small>เมื่อกดปุ่มจอง คุณจะออกจาก TripDeal ไปยังเว็บไซต์ทางการของสายการบิน</small>
+        <small>เมื่อกดปุ่มจอง คุณจะออกจาก TripDeal ไปยังเว็บไซต์ทางการของสายการบิน โดยไม่ต้องกรอกเส้นทางใหม่เมื่อสายการบินรองรับ Deep Link</small>
       </div>
     </main>
     <TripiAssistant/>
