@@ -6,6 +6,12 @@ export type AirlineInfo = {
   airAsiaGroup?: boolean;
 };
 
+export type RouteAirlineFallback = {
+  code: string;
+  routeBookingUrl?: string;
+  note?: string;
+};
+
 const AIRLINES: Record<string, AirlineInfo> = {
   // Thailand
   TG: { code: 'TG', name: 'Thai Airways', country: 'Thailand', bookingUrl: 'https://www.thaiairways.com/' },
@@ -87,6 +93,21 @@ const AIRLINES: Record<string, AirlineInfo> = {
   '8M': { code: '8M', name: 'Myanmar Airways International', country: 'Myanmar', bookingUrl: 'https://www.maiair.com/' },
 };
 
+const ROUTE_FALLBACKS: Record<string, RouteAirlineFallback[]> = {
+  // Verified public direct route pages. These are used only when the price-discovery
+  // provider has no cached fare for the exact requested date.
+  'DMK-SNO': [{
+    code: 'FD',
+    routeBookingUrl: 'https://www.airasia.com/flights/th/th/from-bangkok-dmk-to-sakon-nakhon-sno/',
+    note: 'มีเที่ยวบินตรงในเส้นทางนี้ ตรวจราคาและที่นั่งล่าสุดกับ AirAsia',
+  }],
+  'SNO-DMK': [{
+    code: 'FD',
+    routeBookingUrl: 'https://www.airasia.com/flights/th/th/from-sakon-nakhon-sno-to-bangkok-dmk/',
+    note: 'มีเที่ยวบินตรงในเส้นทางนี้ ตรวจราคาและที่นั่งล่าสุดกับ AirAsia',
+  }],
+};
+
 export function getAirline(code?: string | null): AirlineInfo | null {
   if (!code) return null;
   return AIRLINES[String(code).trim().toUpperCase()] || null;
@@ -97,7 +118,12 @@ export function airlineDisplayName(code?: string | null): string {
   return airline?.name || (code ? `สายการบิน ${String(code).toUpperCase()}` : 'สายการบิน');
 }
 
-export function buildDirectBookingUrl(code?: string | null): string | null {
+export function getRouteFallbackAirlines(origin?: string | null, destination?: string | null): RouteAirlineFallback[] {
+  if (!origin || !destination) return [];
+  return ROUTE_FALLBACKS[`${String(origin).toUpperCase()}-${String(destination).toUpperCase()}`] || [];
+}
+
+export function buildDirectBookingUrl(code?: string | null, routeBookingUrl?: string | null): string | null {
   const airline = getAirline(code);
   if (!airline) return null;
 
@@ -108,6 +134,7 @@ export function buildDirectBookingUrl(code?: string | null): string | null {
     if (affiliateUrl?.trim()) return affiliateUrl.trim();
   }
 
+  if (routeBookingUrl?.trim()) return routeBookingUrl.trim();
   return airline.bookingUrl;
 }
 
