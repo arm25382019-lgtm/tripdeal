@@ -2,7 +2,7 @@ import { ArrowLeft, Bell, ChevronRight, Home, Plane, Search, ShieldCheck, User, 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TripiAssistant from './TripiAssistant';
-import { airlineDisplayName, getAirline, supportedAirlineCount } from '../lib/airlines';
+import { airlineDisplayName, buildDirectBookingUrl, getAirline, getRouteFallbackAirlines, supportedAirlineCount } from '../lib/airlines';
 import { getAirport } from '../lib/airports';
 
 type SearchPrice = {
@@ -83,6 +83,7 @@ export default function AirlineSearchPage() {
   }, [origin, destination, depart, returnDate, trip]);
 
   const sorted = useMemo(() => [...prices].sort((a, b) => a.price - b.price), [prices]);
+  const routeFallbacks = useMemo(() => getRouteFallbackAirlines(origin, destination), [origin, destination]);
 
   const openDeal = (row: SearchPrice, index: number) => {
     const q = new URLSearchParams({
@@ -129,7 +130,32 @@ export default function AirlineSearchPage() {
 
       {loading && <div className="air-search-empty"><Search size={24}/><strong>กำลังค้นหาดีลที่ตรงวันเดินทาง...</strong><span>กำลังเรียงราคาและความสะดวกให้ครับ</span></div>}
       {!loading && error && <div className="air-search-empty"><strong>ค้นหาไม่สำเร็จ</strong><span>{error}</span><button onClick={() => window.location.reload()}>ลองอีกครั้ง</button></div>}
-      {!loading && !error && sorted.length === 0 && <div className="air-search-empty"><strong>ยังไม่พบราคาอ้างอิงสำหรับวันนี้</strong><span>ลองเปลี่ยนวันเดินทาง หรือค้นหาเส้นทางใกล้เคียง</span><button onClick={() => navigate('/')}>แก้ไขการค้นหา</button></div>}
+
+      {!loading && !error && sorted.length === 0 && routeFallbacks.length === 0 && <div className="air-search-empty"><strong>ยังไม่พบราคาอ้างอิงสำหรับวันนี้</strong><span>ลองเปลี่ยนวันเดินทาง หรือค้นหาเส้นทางใกล้เคียง</span><button onClick={() => navigate('/')}>แก้ไขการค้นหา</button></div>}
+
+      {!loading && !error && sorted.length === 0 && routeFallbacks.length > 0 && <>
+        <div className="air-search-title"><div><h2>พบสายการบินที่ให้บริการเส้นทางนี้</h2><p>ยังไม่มีราคา cached ตรงวันเดินทาง จึงให้ตรวจราคาจริงกับสายการบินโดยตรง</p></div><button onClick={() => navigate('/')}>ค้นหาใหม่</button></div>
+        <div className="air-search-list">
+          {routeFallbacks.map((fallback, index) => {
+            const airline = getAirline(fallback.code);
+            const bookingUrl = buildDirectBookingUrl(fallback.code, fallback.routeBookingUrl);
+            return <article className={index === 0 ? 'air-result-card best' : 'air-result-card'} key={`${origin}-${destination}-${fallback.code}`}>
+              <div className="air-result-main">
+                <div className="air-result-tags"><span className="best">✈️ มีเที่ยวบินตรง</span><span>จองตรงสายการบิน</span></div>
+                <h3>{airlineDisplayName(fallback.code)}</h3>
+                <p className="air-result-route">{origin} → {destination}</p>
+                <p>{fallback.note || 'ตรวจสอบเที่ยวบินและราคาล่าสุดกับสายการบิน'}</p>
+                <p className="air-result-flight">TripDeal ยังไม่แสดงราคาเพื่อหลีกเลี่ยงการบอกราคาที่หมดอายุ</p>
+              </div>
+              <div className="air-result-price">
+                <strong>เช็กราคาจริง</strong><span>กับ {airline?.name || airlineDisplayName(fallback.code)}</span><small>ยืนยันที่นั่งและราคาบนเว็บสายการบิน</small>
+                {bookingUrl ? <button onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>ไปที่ {airline?.name || airlineDisplayName(fallback.code)} <ChevronRight size={16}/></button> : <button disabled>ยังไม่มีลิงก์จอง</button>}
+              </div>
+            </article>;
+          })}
+        </div>
+        <div className="air-search-disclaimer"><strong>ทำไมไม่ขึ้นราคาปลอม?</strong><p>เมื่อระบบไม่มีราคาอ้างอิงตรงวันเดินทาง TripDeal จะไม่เดาราคา แต่จะพาไปสายการบินที่ให้บริการเส้นทางนี้เพื่อดูราคาและที่นั่งจริงแทน</p></div>
+      </>}
 
       {!loading && !error && sorted.length > 0 && <>
         <div className="air-search-title"><div><h2>พบ {sorted.length} ดีล</h2><p>เรียงจากราคาต่ำสุด พร้อม Deal Score</p></div><button onClick={() => navigate('/')}>ค้นหาใหม่</button></div>
@@ -140,7 +166,7 @@ export default function AirlineSearchPage() {
             const direct = row.transfers === 0 && (trip === 'oneway' || row.return_transfers === 0);
             return <article className={index === 0 ? 'air-result-card best' : 'air-result-card'} key={`${row.airline}-${row.flight_number}-${row.departure_at}-${row.price}-${index}`}>
               <div className="air-result-main">
-                <div className="air-result-tags">{index === 0 && <span className="best">⭐ TripDeal แนะนำ</span>}{airline && <span>จองตรงสายการบินได้</span>}</div>
+                <div className="air-result-tags">{index === 0 && <span className="best">⭐ ถูกที่สุดที่พบ</span>}{airline && <span>จองตรงสายการบินได้</span>}</div>
                 <h3>{airlineDisplayName(row.airline)}</h3>
                 <p className="air-result-route">{row.origin_airport || origin} → {row.destination_airport || destination}</p>
                 <p>{direct ? 'บินตรง' : `ขาไปต่อ ${row.transfers || 0} ครั้ง${trip === 'roundtrip' ? ` · ขากลับต่อ ${row.return_transfers || 0} ครั้ง` : ''}`}</p>
