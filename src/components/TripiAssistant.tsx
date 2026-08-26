@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Send, X } from 'lucide-react';
+import { Send, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../tripi.css';
 
 type Step = 'country' | 'city' | 'month' | 'days' | 'budget' | 'direct' | 'summary';
 type Message = { from: 'tripi' | 'user'; text: string };
+type AiMode = 'unknown' | 'ai' | 'guided';
 type Prefs = {
   country?: 'Japan';
   city?: 'Tokyo' | 'Osaka' | 'Fukuoka' | 'Sapporo';
@@ -14,9 +15,22 @@ type Prefs = {
   direct?: 'direct' | 'any' | 'best';
 };
 
+type AiPayload = {
+  configured?: boolean;
+  mode?: 'ai';
+  reply?: string;
+  country?: '' | 'Japan';
+  city?: '' | 'Tokyo' | 'Osaka' | 'Fukuoka' | 'Sapporo';
+  month?: string;
+  days?: string;
+  budget?: number;
+  direct?: '' | 'direct' | 'any' | 'best';
+  complete?: boolean;
+};
+
 const welcome: Message = {
   from: 'tripi',
-  text: 'สวัสดีครับ ผม Tripi ✈️ ถ้าไม่อยากกดค้นหาเอง เดี๋ยวผมช่วยหาดีลให้ครับ อยากไปประเทศไหนครับ?',
+  text: 'สวัสดีครับ ผม Tripi ✈️ บอกผมได้เลยว่าอยากเที่ยวแบบไหน เดี๋ยวผมช่วยจัดเงื่อนไขและหาดีลให้ครับ',
 };
 
 const directLabel = (value?: Prefs['direct']) => value === 'direct' ? 'บินตรง' : value === 'any' ? 'ต่อเครื่องได้' : 'เน้นความคุ้ม';
@@ -67,11 +81,47 @@ function extractPrefs(text: string): Partial<Prefs> {
     if (amount) out.budget = Number(amount[1]);
   }
 
-  if (/บินตรง/.test(t)) out.direct = 'direct';
-  else if (/ต่อเครื่อง/.test(t)) out.direct = 'any';
-  else if (/คุ้มที่สุด|เน้นคุ้ม|ราคาดี/.test(t)) out.direct = 'best';
+  if (/ไม่.*บินตรง|ไม่ซีเรียส.*บินตรง|ต่อเครื่อง/.test(t)) out.direct = 'any';
+  else if (/บินตรง/.test(t)) out.direct = 'direct';
+  else if (/คุ้มที่สุด|เน้นคุ้ม|ราคาดี|เอาคุ้ม/.test(t)) out.direct = 'best';
 
   return out;
+}
+
+function nextStep(prefs: Prefs): Step {
+  if (!prefs.country) return 'country';
+  if (!prefs.city) return 'city';
+  if (!prefs.month) return 'month';
+  if (!prefs.days) return 'days';
+  if (prefs.budget === undefined) return 'budget';
+  if (!prefs.direct) return 'direct';
+  return 'summary';
+}
+
+function defaultPrompt(step: Step, prefs: Prefs) {
+  if (step === 'country') return 'ตอนนี้ TripDeal รุ่นทดสอบเปิดค้นหาญี่ปุ่นก่อนครับ 🇯🇵 ลองเริ่มจากญี่ปุ่นได้เลย';
+  if (step === 'city') return 'อยากไป Tokyo, Osaka, Fukuoka หรือ Sapporo ครับ? ถ้ายังไม่แน่ใจ บอกผมให้ช่วยเลือกได้';
+  if (step === 'month') return `โอเค ${prefs.city ?? ''} ครับ ช่วงเดือนไหนสะดวกที่สุด?`;
+  if (step === 'days') return 'อยากเที่ยวประมาณกี่วันครับ?';
+  if (step === 'budget') return 'ตั้งงบตั๋วต่อคนไว้ประมาณเท่าไหร่ครับ?';
+  if (step === 'direct') return 'อยากได้บินตรง ต่อเครื่องได้ หรือให้ผมเน้นความคุ้มเป็นหลักครับ?';
+  return '';
+}
+
+function summaryText(prefs: Prefs) {
+  const budgetText = prefs.budget ? `ไม่เกิน ฿${prefs.budget.toLocaleString('th-TH')}` : 'ไม่จำกัดงบ';
+  return `สรุปให้ครับ ✨ ${prefs.city}, ญี่ปุ่น · ${prefs.month} · ${prefs.days} · ${budgetText} · ${directLabel(prefs.direct)} ถ้าถูกต้อง ผมหาดีลให้ได้เลยครับ`;
+}
+
+function mergeAiPrefs(current: Prefs, payload: AiPayload): Prefs {
+  const next = { ...current };
+  if (payload.country === 'Japan') next.country = 'Japan';
+  if (payload.city) next.city = payload.city;
+  if (payload.month) next.month = payload.month;
+  if (payload.days) next.days = payload.days;
+  if (typeof payload.budget === 'number' && payload.budget >= 0) next.budget = payload.budget;
+  if (payload.direct) next.direct = payload.direct;
+  return next;
 }
 
 export default function TripiAssistant() {
@@ -81,6 +131,8 @@ export default function TripiAssistant() {
   const [prefs, setPrefs] = useState<Prefs>({});
   const [messages, setMessages] = useState<Message[]>([welcome]);
   const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [aiMode, setAiMode] = useState<AiMode>('unknown');
 
   const quickReplies = useMemo(() => {
     if (step === 'country') return ['🇯🇵 ญี่ปุ่น'];
@@ -102,41 +154,14 @@ export default function TripiAssistant() {
     setInput('');
   };
 
-  const askNext = (next: Prefs) => {
-    if (!next.country) {
-      setStep('country');
-      addTripi('ตอนนี้ TripDeal รุ่นทดลองเปิดค้นหาญี่ปุ่นก่อนครับ 🇯🇵 ลองเริ่มจากญี่ปุ่นได้เลย');
+  const advance = (next: Prefs, aiReply?: string) => {
+    const target = nextStep(next);
+    setStep(target);
+    if (target === 'summary') {
+      addTripi(summaryText(next));
       return;
     }
-    if (!next.city) {
-      setStep('city');
-      addTripi('ได้เลยครับ 🇯🇵 อยากไปเมืองไหนครับ?');
-      return;
-    }
-    if (!next.month) {
-      setStep('month');
-      addTripi(`โอเค ${next.city} ครับ ช่วงเดือนไหนสะดวกที่สุด?`);
-      return;
-    }
-    if (!next.days) {
-      setStep('days');
-      addTripi('อยากเที่ยวประมาณกี่วันครับ?');
-      return;
-    }
-    if (next.budget === undefined) {
-      setStep('budget');
-      addTripi('ตั้งงบตั๋วต่อคนไว้ประมาณเท่าไหร่ครับ?');
-      return;
-    }
-    if (!next.direct) {
-      setStep('direct');
-      addTripi('สุดท้าย อยากได้บินตรง หรือเน้นความคุ้มเป็นหลักครับ?');
-      return;
-    }
-
-    setStep('summary');
-    const budgetText = next.budget ? `ไม่เกิน ฿${next.budget.toLocaleString('th-TH')}` : 'ไม่จำกัดงบ';
-    addTripi(`สรุปให้ครับ ✨ ${next.city}, ญี่ปุ่น · ${next.month} · ${next.days} · ${budgetText} · ${directLabel(next.direct)} ถ้าถูกต้อง ผมหาดีลให้ได้เลยครับ`);
+    addTripi(aiReply?.trim() || defaultPrompt(target, next));
   };
 
   const applyChoice = (choice: string) => {
@@ -168,56 +193,56 @@ export default function TripiAssistant() {
     if (step === 'budget') next.budget = choice === 'ไม่จำกัด' ? 0 : Number(choice.replace(/\D/g, ''));
     if (step === 'direct') next.direct = choice === 'บินตรง' ? 'direct' : choice === 'ต่อเครื่องได้' ? 'any' : 'best';
     setPrefs(next);
-    askNext(next);
+    advance(next);
   };
 
-  const sendText = (text: string) => {
-    const clean = text.trim();
-    if (!clean) return;
-    addUser(clean);
-    setInput('');
-
+  const guidedFallback = (clean: string) => {
     const extracted = extractPrefs(clean);
     const next = { ...prefs, ...extracted };
-
-    if (step === 'country' && !next.country) {
-      addTripi('ตอนนี้ผมช่วยค้นหาญี่ปุ่นได้ก่อนครับ 🇯🇵 พิมพ์ “ญี่ปุ่น” หรือกดปุ่มด้านล่างได้เลย');
-      return;
-    }
-    if (step === 'city' && !next.city) {
-      addTripi('ผมยังจับชื่อเมืองไม่ได้ครับ ลองเลือก Tokyo, Osaka, Fukuoka หรือ Sapporo ด้านล่างได้เลย');
-      return;
-    }
-    if (step === 'month' && !next.month) {
-      addTripi('ลองบอกเดือน เช่น “ตุลาคม” หรือกดเดือนด้านล่างได้เลยครับ');
-      return;
-    }
-    if (step === 'days' && !next.days) {
-      addTripi('ลองบอกประมาณกี่วัน เช่น “5 วัน” หรือเลือกช่วงด้านล่างได้ครับ');
-      return;
-    }
-    if (step === 'budget' && next.budget === undefined) {
-      addTripi('ลองพิมพ์งบ เช่น “10000” หรือกดตัวเลือกด้านล่างได้เลยครับ');
-      return;
-    }
-    if (step === 'direct' && !next.direct) {
-      addTripi('เลือกได้เลยครับว่าจะ “บินตรง”, “ต่อเครื่องได้” หรือ “เน้นคุ้มที่สุด”');
-      return;
-    }
-
     setPrefs(next);
-    askNext(next);
+    setAiMode('guided');
+    advance(next);
+  };
+
+  const sendText = async (text: string) => {
+    const clean = text.trim();
+    if (!clean || sending) return;
+    const historyForApi = [...messages, { from: 'user' as const, text: clean }].slice(-8);
+    addUser(clean);
+    setInput('');
+    setSending(true);
+
+    try {
+      const response = await fetch('/api/tripi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: clean, prefs, history: historyForApi }),
+      });
+
+      if (!response.ok) throw new Error('AI unavailable');
+      const payload = await response.json() as AiPayload;
+      if (payload.mode !== 'ai') throw new Error('AI unavailable');
+
+      const next = mergeAiPrefs(prefs, payload);
+      setPrefs(next);
+      setAiMode('ai');
+      advance(next, payload.reply);
+    } catch {
+      guidedFallback(clean);
+    } finally {
+      setSending(false);
+    }
   };
 
   return <>
     {!open && <button className="tripi-launcher" onClick={() => setOpen(true)} aria-label="เปิด Tripi ผู้ช่วยค้นหาดีล">
       <TripiFace />
-      <span><strong>Tripi</strong><small>ไม่อยากกดเอง? ให้ผมช่วยหา</small></span>
+      <span><strong>Tripi <Sparkles size={13}/></strong><small>บอกผมได้เลย เดี๋ยวช่วยหาให้</small></span>
     </button>}
 
     {open && <div className="tripi-sheet" role="dialog" aria-label="Tripi ผู้ช่วยค้นหาดีล">
       <div className="tripi-header">
-        <div className="tripi-profile"><TripiFace small/><div><strong>Tripi</strong><span><i/> พร้อมช่วยหาดีล</span></div></div>
+        <div className="tripi-profile"><TripiFace small/><div><strong>Tripi <span className="tripi-ai-badge">AI</span></strong><span><i/> พร้อมช่วยหาดีล</span></div></div>
         <button onClick={() => setOpen(false)} aria-label="ปิด"><X size={20}/></button>
       </div>
 
@@ -226,17 +251,21 @@ export default function TripiAssistant() {
           {message.from === 'tripi' && <TripiFace small/>}
           <p>{message.text}</p>
         </div>)}
+        {sending && <div className="tripi-message tripi"><TripiFace small/><p className="tripi-thinking"><span/><span/><span/></p></div>}
       </div>
 
       <div className="tripi-replies">
-        {quickReplies.map((reply) => <button key={reply} onClick={() => applyChoice(reply)}>{reply}</button>)}
+        {quickReplies.map((reply) => <button key={reply} disabled={sending} onClick={() => applyChoice(reply)}>{reply}</button>)}
       </div>
 
-      {step !== 'summary' && <form className="tripi-input" onSubmit={(e) => { e.preventDefault(); sendText(input); }}>
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="พิมพ์บอก Tripi ได้เลย..." />
-        <button type="submit" aria-label="ส่งข้อความ"><Send size={18}/></button>
+      {step !== 'summary' && <form className="tripi-input" onSubmit={(e) => { e.preventDefault(); void sendText(input); }}>
+        <input disabled={sending} value={input} onChange={(e) => setInput(e.target.value)} placeholder="เช่น งบหมื่น อยากไปญี่ปุ่นปลายปี..." maxLength={1200}/>
+        <button type="submit" disabled={sending || !input.trim()} aria-label="ส่งข้อความ"><Send size={18}/></button>
       </form>}
-      <div className="tripi-footnote">Tripi v1 · ราคาจริงจะตรวจสอบอีกครั้งก่อนจอง</div>
+      <div className="tripi-footnote">
+        {aiMode === 'ai' ? '✨ Tripi AI กำลังช่วยตีความคำขอของคุณ' : aiMode === 'guided' ? 'Smart fallback · ระบบยังช่วยค้นหาได้ตามปกติ' : 'Tripi v2 · AI + Smart fallback'}
+        <br/>ราคาจะตรวจสอบอีกครั้งก่อนจอง
+      </div>
     </div>}
   </>;
 }
