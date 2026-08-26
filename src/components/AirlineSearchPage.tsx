@@ -34,6 +34,8 @@ type ReferencePrice = SearchPrice & {
 
 type SearchResponse = {
   configured: boolean;
+  strategy?: 'direct_first';
+  provider_role?: string;
   prices?: SearchPrice[];
   reference_prices?: ReferencePrice[];
   error?: string;
@@ -42,13 +44,15 @@ type SearchResponse = {
 const money = (n: number) => new Intl.NumberFormat('th-TH').format(n);
 const dateTH = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-function scoreFor(row: SearchPrice, index: number) {
-  let score = 96 - Math.min(index * 2, 20);
-  score -= (row.transfers || 0) * 5;
-  score -= (row.return_transfers || 0) * 4;
-  if (getAirline(row.airline)) score += 2;
-  if (row.price_basis === 'sum_of_exact_one_way_discovery') score -= 2;
-  return Math.max(65, Math.min(99, score));
+function valueScore(row: SearchPrice, cheapest: number, fastest: number) {
+  const pricePoints = cheapest > 0 && row.price > 0 ? Math.min(55, (cheapest / row.price) * 55) : 30;
+  const totalStops = Number(row.transfers || 0) + Number(row.return_transfers || 0);
+  const routePoints = totalStops === 0 ? 30 : Math.max(5, 30 - totalStops * 10);
+  const durationPoints = fastest > 0 && row.duration_minutes > 0
+    ? Math.min(15, (fastest / row.duration_minutes) * 15)
+    : 8;
+  const airlinePoints = getAirline(row.airline) ? 5 : 2;
+  return Math.max(0, Math.min(100, Math.round(pricePoints + routePoints + durationPoints + airlinePoints)));
 }
 
 export default function AirlineSearchPage() {
@@ -81,6 +85,7 @@ export default function AirlineSearchPage() {
         return_date: trip === 'roundtrip' ? returnDate : undefined,
         one_way: trip === 'oneway',
         direct_only: false,
+        adults,
       }),
     })
       .then(async (res) => {
@@ -94,13 +99,25 @@ export default function AirlineSearchPage() {
       .catch((e) => active && setError(e instanceof Error ? e.message : 'ค้นหาเที่ยวบินไม่สำเร็จ'))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [origin, destination, depart, returnDate, trip]);
+  }, [origin, destination, depart, returnDate, trip, adults]);
 
   const sorted = useMemo(() => [...prices].sort((a, b) => a.price - b.price), [prices]);
+  const references = useMemo(() => [...referencePrices].sort((a, b) => {
+    const dayA = Number(a.reference_day_distance ?? Number.MAX_SAFE_INTEGER);
+    const dayB = Number(b.reference_day_distance ?? Number.MAX_SAFE_INTEGER);
+    return dayA - dayB || a.price - b.price;
+  }), [referencePrices]);
   const routeFallbacks = useMemo(() => getRouteFallbackAirlines(origin, destination), [origin, destination]);
   const exactAirlines = useMemo(() => new Set(sorted.map((row) => row.airline)), [sorted]);
-  const missingFallbacks = useMemo(() => routeFallbacks.filter((fallback) => !exactAirlines.has(fallback.code)), [routeFallbacks, exactAirlines]);
-  const referenceFor = (code: string) => referencePrices.find((row) => row.airline === code);
+  const referenceAirlines = useMemo(() => new Set(references.map((row) => row.airline)), [references]);
+  const missingFallbacks = useMemo(() => routeFallbacks.filter((fallback) => !exactAirlines.has(fallback.code) && !referenceAirlines.has(fallback.code)), [routeFallbacks, exactAirlines, referenceAirlines]);
+  const referenceFor = (code: string) => references.find((row) => row.airline === code);
+
+  const cheapest = sorted[0]?.price || 0;
+  const positiveDurations = sorted.map((row) => row.duration_minutes).filter((n) => n > 0);
+  const fastest = positiveDurations.length ? Math.min(...positiveDurations) : 0;
+  const valueScores = sorted.map((row) => valueScore(row, cheapest, fastest));
+  const bestValueIndex = valueScores.length ? valueScores.indexOf(Math.max(...valueScores)) : -1;
 
   const openDeal = (row: SearchPrice, index: number) => {
     const dealOrigin = (row.origin_airport || row.origin || origin).toUpperCase();
@@ -120,7 +137,7 @@ export default function AirlineSearchPage() {
       flight: row.flight_number || '',
       transfers: String(row.transfers || 0),
       return_transfers: String(row.return_transfers || 0),
-      score: String(scoreFor(row, index)),
+      score: String(valueScores[index] ?? 0),
       back: `/search?${params.toString()}`,
     });
     if (row.return_flight_number) q.set('return_flight', row.return_flight_number);
@@ -129,28 +146,77 @@ export default function AirlineSearchPage() {
     navigate(`/book?${q.toString()}`);
   };
 
+  const openOfficialSearch = (airlineCode: string, routeBookingUrl?: string | null) => {
+    const url = buildDirectBookingUrl(airlineCode, {
+      origin,
+      destination,
+      depart,
+      returnDate,
+      trip,
+      adults,
+      routeBookingUrl,
+    });
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const renderReferenceCard = (reference: ReferencePrice, index: number) => {
+    const airline = getAirline(reference.airline);
+    const dayDistance = Number(reference.reference_day_distance ?? 0);
+    const exactReference = reference.reference_type === 'exact_date' || dayDistance === 0;
+    const bookingUrl = buildDirectBookingUrl(reference.airline, { origin, destination, depart, returnDate, trip, adults });
+
+    return <article className="air-result-card" key={`reference-${reference.airline}-${reference.departure_at}-${index}`}>
+      <div className="air-result-main">
+        <div className="air-result-tags">
+          <span>{exactReference ? 'ราคาอ้างอิงที่พบตรงวัน' : `ราคาอ้างอิงใกล้วัน · ${dayDistance} วัน`}</span>
+          {bookingUrl && <span>ตรวจตรงสายการบิน</span>}
+        </div>
+        <h3>{airlineDisplayName(reference.airline)}</h3>
+        <p className="air-result-route">{origin} → {destination}</p>
+        <p>TripDeal พบข้อมูลราคาของสายการบินนี้ แต่จะให้เว็บไซต์สายการบินยืนยันเที่ยวบินและราคาของวันที่คุณเลือกอีกครั้ง</p>
+        <p className="air-result-flight">ข้อมูลอ้างอิงวันที่ {dateTH(reference.departure_at)}{reference.flight_number ? ` · เที่ยวบิน ${reference.airline}${reference.flight_number}` : ''}</p>
+      </div>
+      <div className="air-result-price">
+        <strong>฿{money(reference.price)}</strong>
+        <span>ราคาอ้างอิง / คน</span>
+        <small>{exactReference ? 'พบข้อมูลในวันเดียวกัน · ยังไม่ใช่การล็อกราคา' : `ไม่ใช่ราคาวันที่เลือก · ห่าง ${dayDistance} วัน`}</small>
+        {bookingUrl
+          ? <button onClick={() => openOfficialSearch(reference.airline)}>ตรวจเที่ยวบินวันที่เลือกกับ {airline?.name || airlineDisplayName(reference.airline)} <ChevronRight size={16}/></button>
+          : <button disabled>ยังไม่มีลิงก์สายการบิน</button>}
+      </div>
+    </article>;
+  };
+
   const renderFallbackCard = (fallback: ReturnType<typeof getRouteFallbackAirlines>[number], index: number) => {
     const airline = getAirline(fallback.code);
     const reference = referenceFor(fallback.code);
-    const isExactReference = reference?.reference_type === 'exact_date';
-    const bookingUrl = isExactReference
-      ? buildDirectBookingUrl(fallback.code, { origin, destination, depart, returnDate, trip, adults, routeBookingUrl: fallback.routeBookingUrl })
-      : buildDirectBookingUrl(fallback.code, fallback.routeBookingUrl);
+    const bookingUrl = buildDirectBookingUrl(fallback.code, {
+      origin,
+      destination,
+      depart,
+      returnDate,
+      trip,
+      adults,
+      routeBookingUrl: fallback.routeBookingUrl,
+    });
 
     return <article className="air-result-card" key={`${origin}-${destination}-${fallback.code}-${index}`}>
       <div className="air-result-main">
-        <div className="air-result-tags">
-          {isExactReference ? <span className="best">✓ พบข้อมูลตรงวันที่เลือก</span> : <span>เส้นทางที่สายการบินให้บริการ</span>}
-          <span>จองตรงสายการบิน</span>
-        </div>
+        <div className="air-result-tags"><span>เส้นทางที่รู้จัก</span><span>ตรวจตรงสายการบิน</span></div>
         <h3>{airlineDisplayName(fallback.code)}</h3>
         <p className="air-result-route">{origin} → {destination}</p>
-        <p>{isExactReference ? 'พบข้อมูลราคาในวันที่เลือกจากระบบค้นหา' : 'สายการบินมีเส้นทางนี้ แต่ TripDeal ยังยืนยันเที่ยวบินของวันที่เลือกไม่ได้'}</p>
-        {reference ? <p className="air-result-flight">{reference.flight_number ? `เที่ยวบิน ${reference.airline}${reference.flight_number} · ` : ''}{isExactReference ? `วันที่ ${dateTH(reference.departure_at)}` : `ราคาอ้างอิงใกล้วันที่เลือก: ${dateTH(reference.departure_at)}`}</p> : <p className="air-result-flight">ยังไม่มีข้อมูลราคา/เที่ยวบินตรงวันที่เลือกที่เชื่อถือได้</p>}
+        <p>TripDeal รู้ว่าสายการบินนี้มีข้อมูลเกี่ยวข้องกับเส้นทาง แต่ยังไม่ยืนยันว่าบินตรงในวันที่คุณเลือก</p>
+        {reference
+          ? <p className="air-result-flight">ราคาอ้างอิงใกล้วัน: ฿{money(reference.price)} · {dateTH(reference.departure_at)}</p>
+          : <p className="air-result-flight">ยังไม่มีราคาอ้างอิงที่เชื่อถือได้</p>}
       </div>
       <div className="air-result-price">
-        {isExactReference && reference ? <><strong>฿{money(reference.price)}</strong><span>{trip === 'roundtrip' ? 'ไป–กลับ' : 'เที่ยวเดียว'} / คน</span><small>ราคาที่พบตรงวัน · ต้องยืนยันอีกครั้ง</small></> : reference ? <><strong>฿{money(reference.price)}</strong><span>ราคาอ้างอิงจากวันใกล้เคียง</span><small>ไม่ใช่ราคาของวันที่คุณเลือก</small></> : <><strong>ยังไม่ยืนยันราคา</strong><span>กับ {airline?.name || airlineDisplayName(fallback.code)}</span><small>ตรวจวันและราคาบนเว็บสายการบิน</small></>}
-        {bookingUrl ? <button onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>{isExactReference ? 'ดูเที่ยวบินวันที่เลือก' : 'ตรวจตารางบินกับสายการบิน'} <ChevronRight size={16}/></button> : <button disabled>ยังไม่มีลิงก์จอง</button>}
+        <strong>เช็กกับสายการบิน</strong>
+        <span>{airline?.name || airlineDisplayName(fallback.code)}</span>
+        <small>ยืนยันตารางบิน ที่นั่ง และราคาที่เว็บไซต์ทางการ</small>
+        {bookingUrl
+          ? <button onClick={() => openOfficialSearch(fallback.code, fallback.routeBookingUrl)}>ตรวจเที่ยวบินวันที่เลือก <ChevronRight size={16}/></button>
+          : <button disabled>ยังไม่มีลิงก์จอง</button>}
       </div>
     </article>;
   };
@@ -175,56 +241,69 @@ export default function AirlineSearchPage() {
         </div>
       </section>
 
-      <div className="air-search-trust"><ShieldCheck size={17}/><div><strong>TripDeal เปรียบเทียบก่อน คุณจ่ายเงินกับสายการบิน</strong><span>รองรับสายการบินไทยและเอเชียใน Directory แล้ว {supportedAirlineCount}+ สายการบิน</span></div></div>
+      <div className="air-search-trust"><ShieldCheck size={17}/><div><strong>Direct-first: เปรียบเทียบใน TripDeal แล้วให้สายการบินยืนยันและรับชำระเงิน</strong><span>Travelpayouts ใช้เป็นข้อมูลอ้างอิง/ค้นหาเส้นทางเท่านั้น · Directory รองรับ {supportedAirlineCount}+ สายการบิน</span></div></div>
 
-      {loading && <div className="air-search-empty"><Search size={24}/><strong>กำลังค้นหาขาไปและขากลับ...</strong><span>ถ้าไม่มีราคาไป–กลับใน cache ระบบจะลองค้นแต่ละขาตรงวันที่เลือกแล้วจับคู่ให้อัตโนมัติ</span></div>}
+      {loading && <div className="air-search-empty"><Search size={24}/><strong>กำลังค้นหาราคาอ้างอิงและสายการบิน...</strong><span>TripDeal จะพยายามพาคุณไปตรวจวันที่และราคากับสายการบินโดยตรง</span></div>}
       {!loading && error && <div className="air-search-empty"><strong>ค้นหาไม่สำเร็จ</strong><span>{error}</span><button onClick={() => window.location.reload()}>ลองอีกครั้ง</button></div>}
 
       {!loading && !error && sorted.length === 0 && <>
         <div className="air-search-empty">
-          <strong>ยังไม่พบข้อมูลเที่ยวบินตรงวันที่เลือกจากแหล่งราคาปัจจุบัน</strong>
-          <span>ระบบลองทั้งไป–กลับและแยกค้นขาไป/ขากลับแล้ว แต่แหล่งข้อมูลยังไม่มีรายการที่จับคู่ได้</span>
+          <strong>{references.length > 0 ? 'ยังไม่มีราคาที่สายการบินยืนยันตรงวัน แต่พบข้อมูลอ้างอิงของเส้นทางนี้' : 'ยังไม่มีข้อมูลราคาตรงวันที่เลือกจากแหล่งอ้างอิง'}</strong>
+          <span>{references.length > 0 ? 'เลือกสายการบินด้านล่างเพื่อไปตรวจเที่ยวบินและราคาของวันที่เลือกบนเว็บไซต์ทางการได้เลย' : 'TripDeal จะไม่แต่งราคาเอง หากไม่มีข้อมูลจะให้ตรวจตรงกับสายการบินแทน'}</span>
           <button onClick={() => navigate('/')}>เปลี่ยนวันหรือค้นหาใหม่</button>
         </div>
-        {routeFallbacks.length > 0 && <>
-          <div className="air-search-title"><div><h2>สายการบินที่มีเส้นทางนี้</h2><p>ข้อมูลส่วนนี้เป็นระดับเส้นทาง ยังไม่ถือว่ายืนยันตารางบินของวันที่เลือก</p></div></div>
-          <div className="air-search-list">{[...routeFallbacks].sort((a, b) => (referenceFor(a.code)?.price ?? Number.MAX_SAFE_INTEGER) - (referenceFor(b.code)?.price ?? Number.MAX_SAFE_INTEGER)).map(renderFallbackCard)}</div>
+
+        {references.length > 0 && <>
+          <div className="air-search-title"><div><h2>ราคาอ้างอิงใกล้วันที่เลือก</h2><p>ใช้ช่วยเทียบสายการบิน แล้วกดตรวจเที่ยวบินจริงกับสายการบินโดยตรง</p></div></div>
+          <div className="air-search-list">{references.slice(0, 12).map(renderReferenceCard)}</div>
+        </>}
+
+        {missingFallbacks.length > 0 && <>
+          <div className="air-search-title"><div><h2>สายการบินอื่นที่ควรตรวจเพิ่ม</h2><p>ไม่มีราคาอ้างอิงเพียงพอ จึงไม่เอามาปนกับผลราคา</p></div></div>
+          <div className="air-search-list">{missingFallbacks.map(renderFallbackCard)}</div>
         </>}
       </>}
 
       {!loading && !error && sorted.length > 0 && <>
-        <div className="air-search-title"><div><h2>พบ {sorted.length} ตัวเลือกสำหรับวันที่เลือก</h2><p>เรียงจากราคาต่ำสุด พร้อม Deal Score</p></div><button onClick={() => navigate('/')}>ค้นหาใหม่</button></div>
+        <div className="air-search-title"><div><h2>พบ {sorted.length} ราคาอ้างอิงตรงวันที่เลือก</h2><p>TripDeal จัดอันดับทั้งราคา การต่อเครื่อง และเวลา เพื่อหาดีลที่คุ้มที่สุด</p></div><button onClick={() => navigate('/')}>ค้นหาใหม่</button></div>
         <div className="air-search-list">
           {sorted.map((row, index) => {
             const airline = getAirline(row.airline);
-            const score = scoreFor(row, index);
+            const score = valueScores[index] ?? 0;
             const direct = row.transfers === 0 && (trip === 'oneway' || row.return_transfers === 0);
             const paired = row.price_basis === 'sum_of_exact_one_way_discovery';
-            return <article className={index === 0 ? 'air-result-card best' : 'air-result-card'} key={`${row.airline}-${row.flight_number}-${row.departure_at}-${row.price}-${index}`}>
+            const isBestValue = index === bestValueIndex;
+            const isCheapest = index === 0;
+            return <article className={isBestValue ? 'air-result-card best' : 'air-result-card'} key={`${row.airline}-${row.flight_number}-${row.departure_at}-${row.price}-${index}`}>
               <div className="air-result-main">
-                <div className="air-result-tags">{index === 0 && <span className="best">⭐ ถูกที่สุดที่พบ</span>}{paired && <span>จับคู่ขาไป+ขากลับตรงวัน</span>}{airline && <span>จองตรงสายการบินได้</span>}</div>
+                <div className="air-result-tags">
+                  {isBestValue && <span className="best">⭐ คุ้มที่สุด</span>}
+                  {isCheapest && !isBestValue && <span className="best">💸 ถูกที่สุด</span>}
+                  {paired && <span>จับคู่ขาไป + ขากลับ</span>}
+                  {airline && <span>จองตรงสายการบิน</span>}
+                </div>
                 <h3>{airlineDisplayName(row.airline)}</h3>
                 <p className="air-result-route">{row.origin_airport || origin} → {row.destination_airport || destination}</p>
                 <p>{direct ? 'บินตรง' : `ขาไปต่อ ${row.transfers || 0} ครั้ง${trip === 'roundtrip' ? ` · ขากลับต่อ ${row.return_transfers || 0} ครั้ง` : ''}`}</p>
                 <p className="air-result-flight">ขาไป {row.flight_number ? `${row.airline}${row.flight_number}` : 'รอยืนยันเลขเที่ยวบิน'} · {dateTH(row.departure_at)}</p>
                 {trip === 'roundtrip' && <p className="air-result-flight">ขากลับ {row.return_flight_number ? `${row.airline}${row.return_flight_number}` : 'รอยืนยันเลขเที่ยวบิน'} · {dateTH(row.return_at)}</p>}
-                <div className="air-score">Deal Score <b>⭐ {score}/100</b><span><i style={{ width: `${score}%` }}/></span></div>
+                <div className="air-score">Value Score <b>⭐ {score}/100</b><span><i style={{ width: `${score}%` }}/></span></div>
               </div>
               <div className="air-result-price">
                 <strong>฿{money(row.price)}</strong><span>{trip === 'roundtrip' ? 'ไป–กลับ' : 'เที่ยวเดียว'} / คน</span>
-                <small>{paired ? 'ราคาอ้างอิงรวมจากขาไป + ขากลับที่พบตรงวัน' : 'ราคาที่พบตรงวัน'}</small>
-                <button onClick={() => openDeal(row, index)}>ดูและเตรียมจอง <ChevronRight size={16}/></button>
+                <small>{paired ? 'ราคาอ้างอิงรวมขาไป + ขากลับที่พบตรงวัน' : 'ราคาอ้างอิงที่พบตรงวัน · ต้องยืนยันกับสายการบิน'}</small>
+                <button onClick={() => openDeal(row, index)}>ดูรายละเอียดและจองตรง <ChevronRight size={16}/></button>
               </div>
             </article>;
           })}
         </div>
 
         {missingFallbacks.length > 0 && <>
-          <div className="air-search-title"><div><h2>สายการบินอื่นที่มีเส้นทางนี้</h2><p>ยังไม่มีข้อมูลยืนยันว่าบินในวันที่เลือก จึงไม่เอามาปนกับผลราคาหลัก</p></div></div>
+          <div className="air-search-title"><div><h2>สายการบินอื่นที่ควรตรวจเพิ่ม</h2><p>ยังไม่มีราคาอ้างอิงตรงวัน จึงแยกออกจากผลหลัก</p></div></div>
           <div className="air-search-list">{missingFallbacks.map(renderFallbackCard)}</div>
         </>}
 
-        <div className="air-search-disclaimer"><strong>เรื่องราคาที่ควรรู้</strong><p>บางผลไป–กลับเป็นการรวมราคาขาไปและขากลับที่ระบบพบแยกกันในวันที่เลือก เพื่อไม่ให้เที่ยวบินหายเพราะ cache ไม่มีแพ็กไป–กลับเดียวกัน ราคาสุดท้ายและที่นั่งต้องยืนยันบนเว็บไซต์สายการบินก่อนชำระเงินจริง</p></div>
+        <div className="air-search-disclaimer"><strong>Direct-first หมายความว่าอะไร?</strong><p>ราคาใน TripDeal ใช้เพื่อช่วยเปรียบเทียบและเลือกดีลที่คุ้มที่สุดเท่านั้น ที่นั่ง ตารางบิน ราคาสุดท้าย สัมภาระ และการชำระเงินให้เว็บไซต์สายการบินเป็นผู้ยืนยันเสมอ</p></div>
       </>}
     </main>
 
