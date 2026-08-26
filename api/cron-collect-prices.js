@@ -38,8 +38,10 @@ function sb(url, key) {
         ...(init.headers || {}),
       },
     });
-    if (!res.ok) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    return res.status === 204 ? null : res.json();
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Supabase ${res.status}: ${text.slice(0, 200)}`);
+    // Prefer: return=minimal คืน 201 พร้อม body ว่าง -> JSON.parse('') จะพัง
+    return text ? JSON.parse(text) : null;
   };
 }
 
@@ -52,7 +54,8 @@ async function fetchMonth({ token, origin, airport, month }) {
     one_way: 'true',
     market: MARKET,
     sorting: 'price',
-    unique: 'true',
+    // ห้ามใส่ unique=true : มันแปลว่า 1 แถวต่อ 1 "เส้นทาง" ไม่ใช่ต่อ 1 วัน
+    // ใส่แล้วจะได้เดือนละแถวเดียว แทนที่จะได้ทุกวันในเดือนนั้น
     limit: '1000',
   });
 
