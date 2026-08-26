@@ -108,8 +108,23 @@ export default function LiveResultsPage() {
   const cheapest = prices[0]?.price || 0;
   const overBudget = Boolean(budget && prices.length && inBudget.length === 0);
 
-  const openLatest = (p: TravelPrice) => {
-    if (p.aviasales_url) window.open(p.aviasales_url, '_blank', 'noopener,noreferrer');
+  const openDetails = (p: TravelPrice) => {
+    const back = `/results?${params.toString()}`;
+    const q = new URLSearchParams({
+      city,
+      origin: p.origin_airport || p.origin || 'BKK',
+      destination: p.destination_airport || p.destination,
+      departure: p.departure_at,
+      return: p.return_at,
+      price: String(p.price),
+      airline: p.airline || '',
+      flight: p.flight_number || '',
+      transfers: String(p.transfers ?? 0),
+      return_transfers: String(p.return_transfers ?? 0),
+      url: p.aviasales_url || '',
+      back,
+    });
+    navigate(`/deal?${q.toString()}`);
   };
 
   return <div className="live-app-shell">
@@ -132,11 +147,8 @@ export default function LiveResultsPage() {
         {fromTripi && <div className="live-tripi-note">✨ Tripi เลือกเงื่อนไขนี้ให้จากบทสนทนาของคุณ</div>}
 
         {loading && <div className="live-empty"><Search size={22}/><strong>กำลังค้นหาราคาจาก Aviasales...</strong><span>เช็กช่วงวันที่และราคาที่พบล่าสุดให้ครับ</span></div>}
-
         {!loading && !configured && <div className="live-empty"><strong>Travelpayouts ยังไม่ได้ตั้งค่า</strong><span>กรุณาตรวจสอบ TRAVELPAYOUTS_TOKEN บน Vercel</span></div>}
-
         {!loading && error && <div className="live-empty"><strong>ค้นหาราคาไม่สำเร็จ</strong><span>{error}</span><button onClick={() => window.location.reload()}>ลองอีกครั้ง</button></div>}
-
         {!loading && !error && configured && prices.length === 0 && <div className="live-empty"><strong>ยังไม่พบราคาสำหรับเงื่อนไขนี้</strong><span>ลองเปลี่ยนเดือน จำนวนวัน หรือเลือกต่อเครื่องได้</span><button onClick={()=>navigate('/find-deal')}>แก้ไขการค้นหา</button></div>}
 
         {!loading && !error && prices.length > 0 && <>
@@ -162,12 +174,12 @@ export default function LiveResultsPage() {
                   <strong>฿{money(p.price)}</strong>
                   <span>ไป–กลับ / คน</span>
                   <small>ราคาที่พบล่าสุด</small>
-                  {p.aviasales_url ? <button onClick={()=>openLatest(p)}>ตรวจสอบราคาล่าสุด <ChevronRight size={15}/></button> : <button disabled>รอลิงก์จอง</button>}
+                  <button onClick={()=>openDetails(p)}>ดูรายละเอียดใน TripDeal <ChevronRight size={15}/></button>
                 </div>
               </article>;
             })}
           </div>
-          <div className="live-disclaimer"><strong>เรื่องราคาที่ควรรู้</strong><p>ข้อมูลนี้มาจาก Aviasales Data API เป็นราคาที่ถูกค้นพบก่อนหน้านี้ ไม่ใช่การรับประกันที่นั่งหรือราคาสด ณ วินาทีนี้ เมื่อกด “ตรวจสอบราคาล่าสุด” ราคาจริงอาจเปลี่ยนได้ตามจำนวนที่นั่งและเงื่อนไขสายการบิน</p></div>
+          <div className="live-disclaimer"><strong>เรื่องราคาที่ควรรู้</strong><p>ข้อมูลนี้มาจาก Aviasales Data API เป็นราคาที่ถูกค้นพบก่อนหน้านี้ ไม่ใช่การรับประกันที่นั่งหรือราคาสด ณ วินาทีนี้ คุณจะออกไป Aviasales เฉพาะตอนกดเช็กราคาล่าสุดจากหน้ารายละเอียดเท่านั้น</p></div>
         </>}
       </section>
     </main>
