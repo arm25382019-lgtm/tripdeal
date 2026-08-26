@@ -27,10 +27,29 @@ type Deal = {
   destinations: Destination;
 };
 
+type CountryOption = {
+  key: 'ไทย' | 'ญี่ปุ่น' | 'เกาหลี' | 'ไต้หวัน' | 'จีน';
+  label: string;
+  flag: string;
+  aliases: string[];
+};
+
+const COUNTRY_OPTIONS: CountryOption[] = [
+  { key: 'ไทย', label: 'ไทย', flag: '🇹🇭', aliases: ['ไทย', 'ประเทศไทย', 'Thailand'] },
+  { key: 'ญี่ปุ่น', label: 'ญี่ปุ่น', flag: '🇯🇵', aliases: ['ญี่ปุ่น', 'Japan'] },
+  { key: 'เกาหลี', label: 'เกาหลี', flag: '🇰🇷', aliases: ['เกาหลี', 'เกาหลีใต้', 'South Korea', 'Korea'] },
+  { key: 'ไต้หวัน', label: 'ไต้หวัน', flag: '🇹🇼', aliases: ['ไต้หวัน', 'Taiwan'] },
+  { key: 'จีน', label: 'จีน', flag: '🇨🇳', aliases: ['จีน', 'China'] },
+];
+
 const money = (n: number) => new Intl.NumberFormat('th-TH').format(n);
 const dateTH = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-const cityIcon = (city: string) => city === 'Tokyo' ? '🗼' : city === 'Osaka' ? '🏯' : city === 'Fukuoka' ? '🌊' : city === 'Sapporo' ? '❄️' : '✈️';
-const countryFlag = (city: string) => ['Tokyo','Osaka','Fukuoka','Sapporo'].includes(city) ? '🇯🇵' : '✈️';
+const cityIcon = (city: string) => city === 'Tokyo' ? '🗼' : city === 'Osaka' ? '🏯' : city === 'Fukuoka' ? '🌊' : city === 'Sapporo' ? '❄️' : city === 'Seoul' ? '🏙️' : city === 'Taipei' ? '🏮' : city === 'Shanghai' ? '🌆' : city === 'Beijing' ? '🏯' : city === 'Chiang Mai' ? '⛰️' : city === 'Phuket' ? '🏝️' : '✈️';
+const flagForCountry = (country?: string) => {
+  const normalized = String(country || '').trim();
+  const option = COUNTRY_OPTIONS.find((item) => item.aliases.includes(normalized));
+  return option?.flag || '✈️';
+};
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <div className="app-shell">
@@ -51,6 +70,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function HomePage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption['key']>('ญี่ปุ่น');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -61,14 +81,27 @@ function HomePage() {
   }, []);
 
   const featuredDeals = useMemo(() => {
+    const selected = COUNTRY_OPTIONS.find((item) => item.key === selectedCountry);
+    const aliases = selected?.aliases ?? [selectedCountry];
     const seen = new Set<string>();
+
     return deals.filter((d) => {
       const city = d.destinations?.city_name;
-      if (!city || seen.has(city)) return false;
+      const country = String(d.destinations?.country_name_th || '').trim();
+      if (!city || !aliases.includes(country) || seen.has(city)) return false;
       seen.add(city);
       return true;
     }).slice(0, 4);
-  }, [deals]);
+  }, [deals, selectedCountry]);
+
+  const selectCountry = (country: CountryOption['key']) => {
+    setSelectedCountry(country);
+    window.setTimeout(() => {
+      document.getElementById('featured-deals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
+  const selectedCountryMeta = COUNTRY_OPTIONS.find((item) => item.key === selectedCountry)!;
 
   return <Shell>
     <section className="hero">
@@ -79,19 +112,24 @@ function HomePage() {
         <p>ค้นหาเที่ยวบินในไทยและเอเชีย แล้วให้ TripDeal ช่วยเลือกดีลที่คุ้มที่สุด</p>
         <FlightSearchEngine />
         <div className="country-grid">
-          {['🇹🇭 ไทย','🇯🇵 ญี่ปุ่น','🇰🇷 เกาหลี','🇹🇼 ไต้หวัน'].map((x, i) => <button key={x} className={i===0?'country active':'country'} onClick={() => navigate('/find-deal')}>{x}</button>)}
+          {COUNTRY_OPTIONS.map((country) => <button
+            key={country.key}
+            className={selectedCountry === country.key ? 'country active' : 'country'}
+            onClick={() => selectCountry(country.key)}
+            aria-pressed={selectedCountry === country.key}
+          >{country.flag} {country.label}</button>)}
         </div>
       </div>
     </section>
 
-    <section className="container section home-deals">
-      <div className="section-title"><h2>🔥 ดีลน่าไปตอนนี้</h2><Link to="/find-deal">ค้นหาเอง</Link></div>
-      {loading ? <div className="empty-state">กำลังโหลดดีล...</div> : featuredDeals.length === 0 ? <div className="empty-state">ยังไม่มีดีลในตอนนี้ ลองค้นหาเที่ยวบินด้านบนได้เลย</div> :
+    <section className="container section home-deals" id="featured-deals">
+      <div className="section-title"><h2>🔥 ดีลน่าไปตอนนี้ · {selectedCountryMeta.flag} {selectedCountryMeta.label}</h2><Link to="/find-deal">ค้นหาเอง</Link></div>
+      {loading ? <div className="empty-state">กำลังโหลดดีล...</div> : featuredDeals.length === 0 ? <div className="empty-state"><strong>ยังไม่มีดีลของ{selectedCountryMeta.label}ในตอนนี้</strong><span>ลองค้นหาเที่ยวบินเองด้านบน หรือเลือกประเทศอื่นได้เลย</span></div> :
       <div className="deal-grid">
         {featuredDeals.map(d => <button key={d.id} className="deal-card compact" onClick={() => navigate(`/flight?id=${d.id}`)}>
           <div className="city-visual"><span>{cityIcon(d.destinations.city_name)}</span></div>
           <div className="deal-body">
-            <div className="deal-title-row"><div><h3>{d.destinations.city_name} {countryFlag(d.destinations.city_name)}</h3><p>{dateTH(d.departure_date)} – {dateTH(d.return_date)}</p></div><ChevronRight size={18}/></div>
+            <div className="deal-title-row"><div><h3>{d.destinations.city_name} {flagForCountry(d.destinations.country_name_th)}</h3><p>{dateTH(d.departure_date)} – {dateTH(d.return_date)}</p></div><ChevronRight size={18}/></div>
             <div className="deal-bottom"><div className="deal-price"><strong>฿{money(Number(d.price_thb))}</strong><small>ราคาอ้างอิง / คน</small></div><span className="good">⭐ {d.deal_score}/100</span></div>
           </div>
         </button>)}
