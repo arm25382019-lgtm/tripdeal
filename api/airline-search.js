@@ -1,3 +1,5 @@
+import { duffelConfigured, searchExactFlights } from '../server/duffel.js';
+
 const TP_API = 'https://api.travelpayouts.com';
 const iataPattern = /^[A-Z0-9]{3}$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -8,6 +10,59 @@ function normalizeDate(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function durationMinutes(value) {
+  if (!value) return 0;
+  const match = String(value).match(/^PT(?:(\d+)H)?(?:(\d+)M)?$/i);
+  if (!match) return 0;
+  return Number(match[1] || 0) * 60 + Number(match[2] || 0);
+}
+
+function mapDuffelOffers(offers, { oneWay, adults }) {
+  const safeAdults = Math.max(1, Number(adults || 1));
+  return (offers || []).map((offer) => {
+    const outbound = offer?.slices?.[0];
+    const inbound = oneWay ? null : offer?.slices?.[1];
+    const allSegments = [...(outbound?.segments || []), ...(inbound?.segments || [])];
+    const carrierCodes = [...new Set(allSegments
+      .map((segment) => segment?.marketing_carrier_iata || segment?.operating_carrier_iata || '')
+      .filter(Boolean))];
+
+    // TripDeal hands customers off to the airline directly, so for now only show
+    // itineraries that can be represented by one airline brand end-to-end.
+    if (carrierCodes.length !== 1) return null;
+
+    const airline = carrierCodes[0];
+    const first = outbound?.segments?.[0] || {};
+    const returnFirst = inbound?.segments?.[0] || {};
+    const total = Number(offer?.total_amount || 0);
+    const pricePerPerson = total > 0 ? total / safeAdults : 0;
+
+    return {
+      origin: outbound?.origin || first?.origin || '',
+      destination: outbound?.destination || first?.destination || '',
+      origin_airport: outbound?.origin || first?.origin || '',
+      destination_airport: outbound?.destination || first?.destination || '',
+      price: Math.round(pricePerPerson * 100) / 100,
+      total_price: Math.round(total * 100) / 100,
+      currency: String(offer?.total_currency || 'THB').toUpperCase(),
+      airline,
+      flight_number: String(first?.marketing_carrier_flight_number || first?.operating_carrier_flight_number || ''),
+      return_flight_number: oneWay ? '' : String(returnFirst?.marketing_carrier_flight_number || returnFirst?.operating_carrier_flight_number || ''),
+      departure_at: normalizeDate(outbound?.departing_at),
+      return_at: oneWay ? null : normalizeDate(inbound?.departing_at),
+      transfers: Math.max(0, Number(outbound?.segments?.length || 1) - 1),
+      return_transfers: oneWay ? 0 : Math.max(0, Number(inbound?.segments?.length || 1) - 1),
+      duration_minutes: durationMinutes(outbound?.duration) + (oneWay ? 0 : durationMinutes(inbound?.duration)),
+      found_at: normalizeDate(offer?.created_at),
+      source: 'duffel_live_search',
+      price_basis: 'live_offer_per_person',
+      offer_id: offer?.id || '',
+      offer_expires_at: normalizeDate(offer?.expires_at),
+      live_mode: Boolean(offer?.live_mode),
+    };
+  }).filter((row) => row && row.departure_at && row.price > 0 && row.airline && (oneWay || row.return_at));
 }
 
 function mapRows(payload, { origin, destination, oneWay }) {
@@ -146,9 +201,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const token = process.env.TRAVELPAYOUTS_TOKEN;
-  if (!token) return res.status(200).json({ configured: false, provider: 'travelpayouts', prices: [], reference_prices: [] });
-
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const origin = String(body.origin || '').trim().toUpperCase();
@@ -157,11 +209,54 @@ export default async function handler(req, res) {
     const returnDate = String(body.return_date || '').trim();
     const oneWay = Boolean(body.one_way);
     const directOnly = Boolean(body.direct_only);
+    const adults = Math.min(9, Math.max(1, Math.round(Number(body.adults || 1))));
 
     if (!iataPattern.test(origin) || !iataPattern.test(destination)) return res.status(400).json({ error: 'Invalid airport code' });
     if (origin === destination) return res.status(400).json({ error: 'Origin and destination must be different' });
     if (!datePattern.test(departureDate)) return res.status(400).json({ error: 'Invalid departure date' });
     if (!oneWay && !datePattern.test(returnDate)) return res.status(400).json({ error: 'Invalid return date' });
+
+    if (duffelConfigured()) {
+      try {
+        const live = await searchExactFlights({
+          origin,
+          destination,
+          departureDate,
+          returnDate: oneWay ? undefined : returnDate,
+          directOnly,
+          adults,
+        });
+        const livePrices = mapDuffelOffers(live?.offers || [], { oneWay, adults })
+          .sort((a, b) => a.price - b.price)
+          .slice(0, 40);
+
+        if (livePrices.length > 0) {
+          return res.status(200).json({
+            configured: true,
+            provider: 'duffel',
+            data_type: 'live_flight_offers',
+            live_mode: Boolean(live?.live_mode),
+            note: 'Live flight offers. Prices and availability can change until confirmed on the airline website.',
+            search: { origin, destination, departure_date: departureDate, return_date: oneWay ? null : returnDate, one_way: oneWay, adults },
+            prices: livePrices,
+            reference_prices: [],
+          });
+        }
+      } catch (error) {
+        console.error('Duffel live search unavailable, falling back to discovery', error?.payload || error);
+      }
+    }
+
+    const token = process.env.TRAVELPAYOUTS_TOKEN;
+    if (!token) {
+      return res.status(200).json({
+        configured: false,
+        provider: duffelConfigured() ? 'duffel' : 'none',
+        prices: [],
+        reference_prices: [],
+        error: duffelConfigured() ? 'Live search returned no airline-direct offers' : 'No flight search provider configured',
+      });
+    }
 
     const exactSettled = await Promise.allSettled(MARKETS.map((market) => fetchPrices({
       token,
@@ -240,10 +335,10 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       configured: true,
-      provider: 'flight_price_discovery',
+      provider: 'travelpayouts',
       data_type: prices.length ? (prices.some((row) => row.price_basis === 'sum_of_exact_one_way_discovery') ? 'exact_dates_with_paired_one_way_fallback' : 'recent_exact_date_fares') : 'route_reference_fares',
-      note: 'Prices are recent discovery data. Paired one-way totals are estimates made from exact-date outbound and inbound discoveries. Final availability, fare and payment are confirmed on the airline website.',
-      search: { origin, destination, departure_date: departureDate, return_date: oneWay ? null : returnDate, one_way: oneWay },
+      note: 'Discovery prices only. Final availability, fare and payment are confirmed on the airline website.',
+      search: { origin, destination, departure_date: departureDate, return_date: oneWay ? null : returnDate, one_way: oneWay, adults },
       markets_checked: MARKETS,
       prices,
       reference_prices: referencePrices,
