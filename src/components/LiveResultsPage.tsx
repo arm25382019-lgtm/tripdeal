@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, ChevronRight, Home, Plane, Search, User } from 'lucide-react';
+import { Bell, ChevronRight, Home, Plane, Search, ShieldCheck, User } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TripiAssistant from './TripiAssistant';
+import { airlineDisplayName, getAirline, supportedAirlineCount } from '../lib/airlines';
 
 type TravelPrice = {
   origin: string;
@@ -90,7 +91,7 @@ export default function LiveResultsPage() {
     })
       .then(async (res) => {
         const data = await res.json() as ApiResponse;
-        if (!res.ok) throw new Error(data.error || 'ไม่สามารถดึงราคาจาก Travelpayouts ได้');
+        if (!res.ok) throw new Error(data.error || 'ระบบค้นหาราคาเที่ยวบินไม่พร้อมใช้งานชั่วคราว');
         if (!active) return;
         setConfigured(data.configured !== false);
         setPrices(data.prices ?? []);
@@ -117,11 +118,10 @@ export default function LiveResultsPage() {
       departure: p.departure_at,
       return: p.return_at,
       price: String(p.price),
-      airline: p.airline || '',
+      airline_code: p.airline || '',
       flight: p.flight_number || '',
       transfers: String(p.transfers ?? 0),
       return_transfers: String(p.return_transfers ?? 0),
-      url: p.aviasales_url || '',
       back,
     });
     navigate(`/deal?${q.toString()}`);
@@ -130,56 +130,58 @@ export default function LiveResultsPage() {
   return <div className="live-app-shell">
     <header className="live-topbar">
       <Link to="/" className="live-brand"><Plane size={22} fill="currentColor"/>TripDeal</Link>
-      <span className="live-source-mini">ข้อมูลราคาโดย Aviasales</span>
+      <span className="live-source-mini">Airline Direct · รองรับ {supportedAirlineCount}+ สายการบินในเอเชีย</span>
     </header>
 
     <main>
       <section className="live-head">
         <div className="live-container">
-          <span className="live-data-pill">✈️ AVIASALES DATA API</span>
+          <span className="live-data-pill"><ShieldCheck size={13}/> AIRLINE DIRECT</span>
           <h1>{city}</h1>
           <p>กรุงเทพ (BKK/DMK) · {days} · {month}{directOnly ? ' · บินตรง' : ''}</p>
-          <div className="live-freshness">ราคาที่ Aviasales พบล่าสุดจากการค้นหาของผู้ใช้ · ตรวจสอบราคาปัจจุบันอีกครั้งก่อนจอง</div>
+          <div className="live-freshness">TripDeal ช่วยค้นหาและเปรียบเทียบดีลให้ก่อน จากนั้นคุณจะจองและชำระเงินกับเว็บไซต์ทางการของสายการบินโดยตรง</div>
         </div>
       </section>
 
       <section className="live-container live-results-section">
         {fromTripi && <div className="live-tripi-note">✨ Tripi เลือกเงื่อนไขนี้ให้จากบทสนทนาของคุณ</div>}
 
-        {loading && <div className="live-empty"><Search size={22}/><strong>กำลังค้นหาราคาจาก Aviasales...</strong><span>เช็กช่วงวันที่และราคาที่พบล่าสุดให้ครับ</span></div>}
-        {!loading && !configured && <div className="live-empty"><strong>Travelpayouts ยังไม่ได้ตั้งค่า</strong><span>กรุณาตรวจสอบ TRAVELPAYOUTS_TOKEN บน Vercel</span></div>}
+        {loading && <div className="live-empty"><Search size={22}/><strong>กำลังค้นหาดีล...</strong><span>กำลังเปรียบเทียบช่วงวัน ราคา และจำนวนต่อเครื่อง</span></div>}
+        {!loading && !configured && <div className="live-empty"><strong>ระบบค้นหาราคายังไม่พร้อม</strong><span>กรุณาลองใหม่อีกครั้งในภายหลัง</span></div>}
         {!loading && error && <div className="live-empty"><strong>ค้นหาราคาไม่สำเร็จ</strong><span>{error}</span><button onClick={() => window.location.reload()}>ลองอีกครั้ง</button></div>}
         {!loading && !error && configured && prices.length === 0 && <div className="live-empty"><strong>ยังไม่พบราคาสำหรับเงื่อนไขนี้</strong><span>ลองเปลี่ยนเดือน จำนวนวัน หรือเลือกต่อเครื่องได้</span><button onClick={()=>navigate('/find-deal')}>แก้ไขการค้นหา</button></div>}
 
         {!loading && !error && prices.length > 0 && <>
           {overBudget && <div className="live-budget-warning"><strong>ยังไม่พบดีลในงบ ฿{money(budget)}</strong><span>ราคาต่ำสุดที่พบตอนนี้คือ ฿{money(cheapest)} — แสดงตัวเลือกใกล้งบให้ก่อน</span></div>}
-          <div className="live-results-title"><div><h2>{overBudget ? 'ตัวเลือกใกล้งบ' : `พบ ${shown.length} ดีลที่น่าสนใจ`}</h2><p>เรียงจากราคาต่ำสุดที่พบ</p></div><button onClick={()=>navigate('/find-deal')}>แก้ไข</button></div>
+          <div className="live-results-title"><div><h2>{overBudget ? 'ตัวเลือกใกล้งบ' : `พบ ${shown.length} ดีลที่น่าสนใจ`}</h2><p>TripDeal จัดอันดับจากราคา ความสะดวก และจำนวนต่อเครื่อง</p></div><button onClick={()=>navigate('/find-deal')}>แก้ไข</button></div>
           <div className="live-list">
             {shown.map((p, i) => {
               const score = scoreFor(p, i, cheapest, budget);
               const withinBudget = !budget || p.price <= budget;
+              const airline = getAirline(p.airline);
               return <article className={i === 0 ? 'live-card best' : 'live-card'} key={`${p.origin_airport}-${p.destination_airport}-${p.departure_at}-${p.return_at}-${p.price}-${i}`}>
                 <div className="live-card-main">
                   <div className="live-card-tags">
-                    {i === 0 && <span className="live-best">🔥 ราคาต่ำสุดที่พบ</span>}
+                    {i === 0 && <span className="live-best">⭐ TripDeal แนะนำ</span>}
                     {withinBudget && budget > 0 && <span className="live-inbudget">อยู่ในงบ</span>}
+                    {airline && <span className="live-inbudget">จองตรงสายการบินได้</span>}
                   </div>
                   <h3>{formatDate(p.departure_at)} – {formatDate(p.return_at)}</h3>
                   <p className="live-route">{routeText(p)} · {tripDays(p.departure_at, p.return_at)} วัน</p>
                   <p>{transferText(p)}</p>
-                  <div className="live-meta"><span>สายการบิน <b>{p.airline || 'ตรวจสอบตอนจอง'}</b>{p.flight_number ? ` · ${p.flight_number}` : ''}</span></div>
+                  <div className="live-meta"><span><b>{airlineDisplayName(p.airline)}</b>{p.flight_number ? ` · ${p.flight_number}` : ''}</span></div>
                   <div className="live-score">Deal Score <b>⭐ {score}/100</b><span><i style={{width:`${score}%`}}/></span></div>
                 </div>
                 <div className="live-price-side">
                   <strong>฿{money(p.price)}</strong>
                   <span>ไป–กลับ / คน</span>
-                  <small>ราคาที่พบล่าสุด</small>
-                  <button onClick={()=>openDetails(p)}>ดูรายละเอียดใน TripDeal <ChevronRight size={15}/></button>
+                  <small>ราคาอ้างอิงล่าสุด</small>
+                  <button onClick={()=>openDetails(p)}>ดูและเตรียมจอง <ChevronRight size={15}/></button>
                 </div>
               </article>;
             })}
           </div>
-          <div className="live-disclaimer"><strong>เรื่องราคาที่ควรรู้</strong><p>ข้อมูลนี้มาจาก Aviasales Data API เป็นราคาที่ถูกค้นพบก่อนหน้านี้ ไม่ใช่การรับประกันที่นั่งหรือราคาสด ณ วินาทีนี้ คุณจะออกไป Aviasales เฉพาะตอนกดเช็กราคาล่าสุดจากหน้ารายละเอียดเท่านั้น</p></div>
+          <div className="live-disclaimer"><strong>ก่อนชำระเงิน</strong><p>ราคาบน TripDeal ใช้สำหรับช่วยเปรียบเทียบและอาจเปลี่ยนได้ เมื่อเลือกดีลแล้ว TripDeal จะพาไปเว็บไซต์ทางการของสายการบินเพื่อยืนยันเที่ยวบิน ราคา ที่นั่ง สัมภาระ และชำระเงินกับสายการบินโดยตรง</p></div>
         </>}
       </section>
     </main>
