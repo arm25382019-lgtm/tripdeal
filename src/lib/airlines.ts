@@ -85,7 +85,7 @@ const AIRLINES: Record<string, AirlineInfo> = {
   CZ: { code: 'CZ', name: 'China Southern Airlines', country: 'China', bookingUrl: 'https://www.csair.com/' },
   MF: { code: 'MF', name: 'XiamenAir', country: 'China', bookingUrl: 'https://www.xiamenair.com/' },
   HU: { code: 'HU', name: 'Hainan Airlines', country: 'China', bookingUrl: 'https://www.hainanairlines.com/' },
-  HO: { code: 'HO', name: 'Juneyao Air', country: 'China', bookingUrl: 'https://www.juneyaoair.com/' },
+  HO: { code: 'HO', name: 'Juneyao Air', country: 'China', bookingUrl: 'https://global.juneyaoair.com/flightInquiry' },
   '9C': { code: '9C', name: 'Spring Airlines', country: 'China', bookingUrl: 'https://en.ch.com/' },
   SC: { code: 'SC', name: 'Shandong Airlines', country: 'China', bookingUrl: 'https://www.sda.cn/' },
 
