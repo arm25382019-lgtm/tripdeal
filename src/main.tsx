@@ -8,6 +8,7 @@ import LegacyFlightBridge from './components/LegacyFlightBridge';
 import AirlineSearchPage from './components/AirlineSearchPage';
 import AirlineBookingPage from './components/AirlineBookingPage';
 import './styles.css';
+import './blog.css';
 import './flight-detail.css';
 import './fare.css';
 import './tripi.css';
