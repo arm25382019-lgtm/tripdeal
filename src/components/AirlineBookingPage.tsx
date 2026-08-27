@@ -41,7 +41,9 @@ export default function AirlineBookingPage() {
   const direct = transfers === 0 && (trip === 'oneway' || returnTransfers === 0);
   const primaryLabel = airline?.airAsiaGroup
     ? `เลือกเที่ยวบินกับ ${airline.name}`
-    : `ไปจองกับ ${airline?.name || airlineDisplayName(airlineCode)}`;
+    : airline?.bookingLanguage === 'th'
+      ? `เปิดหน้าจองภาษาไทยของ ${airline.name}`
+      : `ไปจองกับ ${airline?.name || airlineDisplayName(airlineCode)}`;
 
   return <div className="air-book-page">
     <header className="air-book-topbar">
@@ -88,8 +90,9 @@ export default function AirlineBookingPage() {
       <div className="air-book-actions">
         {bookingUrl ? <button className="air-book-primary" onClick={() => window.open(bookingUrl, '_blank', 'noopener,noreferrer')}>{primaryLabel} <ChevronRight size={18}/></button> : <button className="air-book-primary" disabled>ยังไม่รองรับลิงก์จองตรงสายการบินนี้</button>}
         {airline?.airAsiaGroup && <p className="airasia-note">ระบบจะส่งเส้นทาง วันที่ และจำนวนผู้โดยสารไปยังหน้าเลือกเที่ยวบินของ AirAsia โดยอัตโนมัติ {affiliateReady ? '· Affiliate Tracking พร้อมใช้งาน' : '· Affiliate Tracking จะเปิดหลัง Partnerize อนุมัติ'}</p>}
+        {!airline?.airAsiaGroup && airline?.bookingFlow === 'booking_page' && <p className="airasia-note">สายการบินนี้ยังไม่มี Deep Link ที่ TripDeal ยืนยันได้ว่าส่งวันเดินทางและผู้โดยสารเข้าไปอัตโนมัติ จึงเปิดหน้า Booking {airline.bookingLanguage === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ'} ของสายการบินโดยตรงให้แทน</p>}
         <button className="air-book-secondary" onClick={() => navigate(back)}>กลับไปดูดีลอื่น</button>
-        <small>เมื่อกดปุ่มจอง คุณจะออกจาก TripDeal ไปยังเว็บไซต์ทางการของสายการบิน โดยไม่ต้องกรอกเส้นทางใหม่เมื่อสายการบินรองรับ Deep Link</small>
+        <small>เมื่อกดปุ่มจอง คุณจะออกจาก TripDeal ไปยังเว็บไซต์ทางการของสายการบิน โดย TripDeal จะส่งรายละเอียดเส้นทางให้เมื่อสายการบินรองรับ Deep Link ที่ยืนยันแล้ว</small>
       </div>
     </main>
     <TripiAssistant/>
