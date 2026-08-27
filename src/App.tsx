@@ -36,6 +36,13 @@ type FeaturedResponse = {
   error?: string;
 };
 
+type TravelGuide = {
+  icon: string;
+  title: string;
+  summary: string;
+  tag: string;
+};
+
 const COUNTRY_OPTIONS: CountryOption[] = [
   { key: 'ไทย', label: 'ไทย', flag: '🇹🇭' },
   { key: 'ญี่ปุ่น', label: 'ญี่ปุ่น', flag: '🇯🇵' },
@@ -43,6 +50,34 @@ const COUNTRY_OPTIONS: CountryOption[] = [
   { key: 'ไต้หวัน', label: 'ไต้หวัน', flag: '🇹🇼' },
   { key: 'จีน', label: 'จีน', flag: '🇨🇳' },
 ];
+
+const TRAVEL_GUIDES: Record<CountryOption['key'], TravelGuide[]> = {
+  ไทย: [
+    { icon: '🗺️', title: 'เมืองน่าเที่ยวในไทย', summary: 'เชียงใหม่ เชียงราย ภูเก็ต กระบี่ และสมุย เหมาะกับทั้งทริปสั้นและวันหยุดยาว เลือกเมืองให้เข้ากับฤดูกาลและสไตล์เที่ยวของคุณ', tag: 'สถานที่แนะนำ' },
+    { icon: '☀️', title: 'เลือกช่วงเที่ยวให้คุ้ม', summary: 'ภาคเหนือเด่นช่วงอากาศเย็น ส่วนทะเลควรเช็กฤดูฝนของแต่ละฝั่งก่อนจอง เพื่อให้ได้ทั้งราคาดีและเที่ยวได้เต็มวัน', tag: 'ช่วงน่าเที่ยว' },
+    { icon: '🎒', title: 'ทิปเที่ยวในประเทศ', summary: 'เปรียบเทียบทั้ง BKK, DMK, CNX และ HKT เพราะบางเส้นทางราคาต่างกันมาก รวมถึงเช็กสัมภาระและค่าเลือกที่นั่งก่อนชำระเงิน', tag: 'ก่อนเดินทาง' },
+  ],
+  ญี่ปุ่น: [
+    { icon: '🗼', title: 'Tokyo, Osaka หรือ Sapporo?', summary: 'โตเกียวเหมาะกับเที่ยวครั้งแรก โอซาก้าเหมาะกับสายกินและเที่ยวคันไซ ส่วนซัปโปโรเด่นเรื่องธรรมชาติ หิมะ และอากาศเย็น', tag: 'สถานที่แนะนำ' },
+    { icon: '🌸', title: 'ฤดูไหนเหมาะกับคุณ', summary: 'ฤดูใบไม้ผลิและใบไม้ร่วงเป็นช่วงยอดนิยม ส่วนฤดูหนาวเหมาะกับหิมะและสกี หากเน้นประหยัดลองเลี่ยงวันหยุดยาวและเทศกาลใหญ่', tag: 'ช่วงน่าเที่ยว' },
+    { icon: '🚆', title: 'วางแผนเมืองและสนามบิน', summary: 'โตเกียวมีทั้ง NRT และ HND ส่วนโอซาก้ามี KIX การเลือกสนามบินให้ใกล้ที่พักอาจช่วยลดทั้งเวลาและค่าเดินทางเข้าเมือง', tag: 'ก่อนเดินทาง' },
+  ],
+  เกาหลี: [
+    { icon: '🏙️', title: 'Seoul, Busan และ Jeju', summary: 'โซลเหมาะกับช้อปปิ้งและคาเฟ่ ปูซานเด่นทะเลและอาหาร ส่วนเชจูเหมาะกับธรรมชาติและการขับรถเที่ยวแบบสบาย ๆ', tag: 'สถานที่แนะนำ' },
+    { icon: '🍁', title: 'อากาศแต่ละฤดูต่างกันชัด', summary: 'ใบไม้ผลิและใบไม้ร่วงเที่ยวสบาย ฤดูหนาวหนาวจัดและมีหิมะ ส่วนหน้าร้อนอากาศร้อนชื้น ควรเตรียมเสื้อผ้าให้ตรงฤดู', tag: 'ช่วงน่าเที่ยว' },
+    { icon: '📱', title: 'เตรียมตัวก่อนเที่ยวเกาหลี', summary: 'เช็กข้อกำหนดการเข้าประเทศล่าสุดก่อนเดินทาง และวางแผนอินเทอร์เน็ต การเดินทางจากสนามบิน และบัตรโดยสารสาธารณะล่วงหน้า', tag: 'ก่อนเดินทาง' },
+  ],
+  ไต้หวัน: [
+    { icon: '🏮', title: 'Taipei และเมืองรอบ ๆ', summary: 'ไทเปเหมาะกับทริป 3–5 วัน และสามารถต่อรถไปจิ่วเฟิ่น เป่ยโถว หรือเมืองใกล้เคียงได้ง่าย เหมาะกับสายกินและเดินเที่ยว', tag: 'สถานที่แนะนำ' },
+    { icon: '🌦️', title: 'เที่ยวได้เกือบทั้งปี', summary: 'อากาศช่วงปลายปีถึงต้นปีค่อนข้างสบาย ส่วนฤดูร้อนมีทั้งความชื้นและฝน ควรเช็กพยากรณ์ก่อนจัดทริปกลางแจ้ง', tag: 'ช่วงน่าเที่ยว' },
+    { icon: '🚇', title: 'เที่ยวเองง่ายด้วยขนส่งสาธารณะ', summary: 'MRT และรถไฟเชื่อมเมืองหลักได้ดี เลือกที่พักใกล้สถานีช่วยประหยัดเวลา และควรเผื่อเวลาเดินทางไปสนามบินวันกลับ', tag: 'ก่อนเดินทาง' },
+  ],
+  จีน: [
+    { icon: '🏯', title: 'เมืองจีนที่น่าเริ่มต้น', summary: 'เซี่ยงไฮ้เหมาะกับเมืองทันสมัย ปักกิ่งเด่นประวัติศาสตร์ กวางโจวและเซินเจิ้นเหมาะกับธุรกิจและช้อปปิ้ง ส่วนคุนหมิงอากาศสบาย', tag: 'สถานที่แนะนำ' },
+    { icon: '🌤️', title: 'เลือกฤดูตามภูมิภาค', summary: 'ประเทศจีนมีพื้นที่กว้างและอากาศต่างกันมาก ควรเช็กสภาพอากาศของเมืองปลายทางโดยตรงก่อนเลือกวันเดินทาง', tag: 'ช่วงน่าเที่ยว' },
+    { icon: '💳', title: 'เตรียมแอปและการชำระเงิน', summary: 'ก่อนเดินทางควรเช็กข้อกำหนดการเข้าประเทศล่าสุด รวมถึงแอปแผนที่ อินเทอร์เน็ต และช่องทางชำระเงินที่ใช้ได้ในพื้นที่', tag: 'ก่อนเดินทาง' },
+  ],
+};
 
 const money = (n: number) => new Intl.NumberFormat('th-TH').format(n);
 const dateTH = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
@@ -101,14 +136,8 @@ function HomePage() {
     return () => { active = false; };
   }, [selectedCountry]);
 
-  const selectCountry = (country: CountryOption['key']) => {
-    setSelectedCountry(country);
-    window.setTimeout(() => {
-      document.getElementById('featured-deals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 60);
-  };
-
   const selectedCountryMeta = COUNTRY_OPTIONS.find((item) => item.key === selectedCountry)!;
+  const countryGuides = TRAVEL_GUIDES[selectedCountry];
 
   const openFeatured = (d: FeaturedDeal) => {
     const q = new URLSearchParams({
@@ -139,20 +168,22 @@ function HomePage() {
         <h1>อยากเที่ยวที่ไหน?</h1>
         <p>ค้นหาเที่ยวบินในไทยและเอเชีย แล้วให้ TripDeal ช่วยเลือกดีลที่คุ้มที่สุด</p>
         <FlightSearchEngine />
-        <div className="country-grid">
-          {COUNTRY_OPTIONS.map((country) => <button
-            key={country.key}
-            className={selectedCountry === country.key ? 'country active' : 'country'}
-            onClick={() => selectCountry(country.key)}
-            aria-pressed={selectedCountry === country.key}
-          >{country.flag} {country.label}</button>)}
-        </div>
       </div>
     </section>
 
     <section className="container section home-deals" id="featured-deals">
       <div className="section-title"><h2>🔥 ดีลน่าไปตอนนี้ · {selectedCountryMeta.flag} {selectedCountryMeta.label}</h2><Link to="/find-deal">ค้นหาเอง</Link></div>
-      <p style={{marginTop:'-8px',color:'#64748b',fontSize:'13px'}}>คัดจากราคาที่พบล่าสุดเพื่อช่วยเลือกช่วงเดินทาง · ราคาจริงยืนยันอีกครั้งกับสายการบิน</p>
+      <p className="deal-subtitle">คัดจากราคาที่พบล่าสุดเพื่อช่วยเลือกช่วงเดินทาง · ราคาจริงยืนยันอีกครั้งกับสายการบิน</p>
+
+      <div className="country-grid deals-country-grid" aria-label="เลือกประเทศสำหรับดูดีล">
+        {COUNTRY_OPTIONS.map((country) => <button
+          key={country.key}
+          className={selectedCountry === country.key ? 'country active' : 'country'}
+          onClick={() => setSelectedCountry(country.key)}
+          aria-pressed={selectedCountry === country.key}
+        >{country.flag} {country.label}</button>)}
+      </div>
+
       {loading ? <div className="empty-state">กำลังค้นหาดีลล่าสุดของ{selectedCountryMeta.label}...</div> : error ? <div className="empty-state"><strong>โหลดดีลไม่สำเร็จ</strong><span>{error}</span></div> : featuredDeals.length === 0 ? <div className="empty-state"><strong>ยังไม่มีดีลของ{selectedCountryMeta.label}ในตอนนี้</strong><span>ลองค้นหาเที่ยวบินเองด้านบน หรือเลือกประเทศอื่นได้เลย</span></div> :
       <div className="deal-grid">
         {featuredDeals.slice(0, 4).map((d, i) => <button key={`${d.city}-${d.departure_at}-${i}`} className="deal-card compact" onClick={() => openFeatured(d)}>
@@ -164,6 +195,22 @@ function HomePage() {
           </div>
         </button>)}
       </div>}
+
+      <section className="travel-guide-section">
+        <div className="travel-guide-head">
+          <div><span>TRIPDEAL GUIDE</span><h2>เที่ยว{selectedCountryMeta.label} เริ่มวางแผนตรงนี้</h2><p>ข้อมูลสั้น ๆ ช่วยเลือกเมือง ช่วงเวลา และเตรียมตัวก่อนจอง</p></div>
+          <div className="travel-guide-flag">{selectedCountryMeta.flag}</div>
+        </div>
+        <div className="travel-guide-grid">
+          {countryGuides.map((guide) => <article className="travel-guide-card" key={guide.title}>
+            <div className="travel-guide-icon">{guide.icon}</div>
+            <span>{guide.tag}</span>
+            <h3>{guide.title}</h3>
+            <p>{guide.summary}</p>
+          </article>)}
+        </div>
+        <p className="travel-guide-note">ข้อมูลส่วนนี้เป็นไกด์ทั่วไปสำหรับวางแผนทริป ควรตรวจข้อกำหนดการเดินทางและข้อมูลล่าสุดจากหน่วยงานทางการก่อนออกเดินทาง</p>
+      </section>
     </section>
   </Shell>;
 }
