@@ -7,6 +7,7 @@ import LiveDealPage from './components/LiveDealPage';
 import LegacyFlightBridge from './components/LegacyFlightBridge';
 import AirlineSearchPage from './components/AirlineSearchPage';
 import AirlineBookingPage from './components/AirlineBookingPage';
+import { LanguageProvider } from './lib/i18n';
 import './styles.css';
 import './blog.css';
 import './flight-detail.css';
@@ -29,7 +30,9 @@ function Root() {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <Root />
+      <LanguageProvider>
+        <Root />
+      </LanguageProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );
