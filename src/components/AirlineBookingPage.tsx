@@ -23,16 +23,11 @@ export default function AirlineBookingPage() {
   const transfers = Number(params.get('transfers') || 0);
   const returnTransfers = Number(params.get('return_transfers') || 0);
   const score = Number(params.get('score') || 0);
+  const source = params.get('source') || 'reference';
+  const isLiveSource = source === 'live';
   const back = params.get('back') || '/';
   const airline = getAirline(airlineCode);
-  const bookingUrl = buildDirectBookingUrl(airlineCode, {
-    origin,
-    destination,
-    depart,
-    returnDate,
-    trip,
-    adults,
-  });
+  const bookingUrl = buildDirectBookingUrl(airlineCode, { origin, destination, depart, returnDate, trip, adults });
   const affiliateReady = isAirAsiaAffiliateReady(airlineCode);
   const totalReference = price * adults;
 
@@ -46,19 +41,12 @@ export default function AirlineBookingPage() {
       : `ไปจองกับ ${airline?.name || airlineDisplayName(airlineCode)}`;
 
   return <div className="air-book-page">
-    <header className="air-book-topbar">
-      <button onClick={() => navigate(back)} aria-label="ย้อนกลับ"><ArrowLeft size={21}/></button>
-      <Link to="/" className="air-book-brand"><Plane size={21} fill="currentColor"/>TripDeal</Link>
-      <span>Booking Assistant</span>
-    </header>
+    <header className="air-book-topbar"><button onClick={() => navigate(back)} aria-label="ย้อนกลับ"><ArrowLeft size={21}/></button><Link to="/" className="air-book-brand"><Plane size={21} fill="currentColor"/>TripDeal</Link><span>Booking Assistant</span></header>
 
     <main className="air-book-container">
       <div className="air-book-steps"><span className="done">1 เลือกเที่ยวบิน ✓</span><span className="active">2 ตรวจสอบ</span><span>3 จองกับสายการบิน</span></div>
 
-      <section className="air-book-hero">
-        <div><span className="air-book-pill"><ShieldCheck size={14}/> จองตรงสายการบิน</span><h1>{origin} → {destination}</h1><p>{originName} → {destinationName}</p></div>
-        <div className="air-book-score">⭐ {score || '—'}/100</div>
-      </section>
+      <section className="air-book-hero"><div><span className="air-book-pill"><ShieldCheck size={14}/> จองตรงสายการบิน</span><h1>{origin} → {destination}</h1><p>{originName} → {destinationName}</p></div><div className="air-book-score">⭐ {score || '—'}/100</div></section>
 
       <section className="air-book-card">
         <div className="air-book-card-head"><Plane size={19}/><div><h2>{airlineDisplayName(airlineCode)}</h2><p>{flight ? `เที่ยวบิน ${airlineCode}${flight}` : 'หมายเลขเที่ยวบินยืนยันอีกครั้งก่อนจอง'}</p></div></div>
@@ -69,7 +57,7 @@ export default function AirlineBookingPage() {
       </section>
 
       <section className="air-book-card price-card">
-        <div className="air-book-card-head"><Info size={19}/><div><h2>สรุปราคาอ้างอิง</h2><p>ราคาจริงจะยืนยันอีกครั้งบนเว็บไซต์สายการบิน</p></div></div>
+        <div className="air-book-card-head"><Info size={19}/><div><h2>{isLiveSource ? 'ราคาจาก Live Search' : 'สรุปราคาอ้างอิง'}</h2><p>{isLiveSource ? 'ค้นพบจาก Amadeus Production Live · ราคาสุดท้ายให้สายการบินยืนยันอีกครั้งก่อนชำระเงิน' : 'ราคาอ้างอิงใช้ช่วยเปรียบเทียบ · ราคาจริงยืนยันบนเว็บไซต์สายการบิน'}</p></div></div>
         <div className="air-book-info"><span>ต่อคน</span><strong>฿{money(price)}</strong></div>
         <div className="air-book-info total"><span>รวม {adults} คน</span><strong>฿{money(totalReference)}</strong></div>
       </section>
@@ -83,7 +71,7 @@ export default function AirlineBookingPage() {
       </section>
 
       <section className="air-book-card">
-        <div className="air-book-card-head"><Info size={19}/><div><h2>ตรวจสอบก่อนกดจอง</h2><p>รายการเหล่านี้อาจต่างจากราคาอ้างอิง</p></div></div>
+        <div className="air-book-card-head"><Info size={19}/><div><h2>ตรวจสอบก่อนกดจอง</h2><p>ข้อมูลเหล่านี้ควรยืนยันอีกครั้งกับสายการบิน</p></div></div>
         <div className="air-book-checklist"><span>• เวลาเที่ยวบินและ Terminal</span><span>• สัมภาระถือขึ้นเครื่อง / โหลดใต้ท้อง</span><span>• ค่าเลือกที่นั่งและบริการเสริม</span><span>• Fare Rules การเปลี่ยนวัน ยกเลิก และคืนเงิน</span><span>• ราคาสุดท้ายรวมภาษีและค่าธรรมเนียม</span></div>
       </section>
 
@@ -92,7 +80,7 @@ export default function AirlineBookingPage() {
         {airline?.airAsiaGroup && <p className="airasia-note">ระบบจะส่งเส้นทาง วันที่ และจำนวนผู้โดยสารไปยังหน้าเลือกเที่ยวบินของ AirAsia โดยอัตโนมัติ {affiliateReady ? '· Affiliate Tracking พร้อมใช้งาน' : '· Affiliate Tracking จะเปิดหลัง Partnerize อนุมัติ'}</p>}
         {!airline?.airAsiaGroup && airline?.bookingFlow === 'booking_page' && <p className="airasia-note">สายการบินนี้ยังไม่มี Deep Link ที่ TripDeal ยืนยันได้ว่าส่งวันเดินทางและผู้โดยสารเข้าไปอัตโนมัติ จึงเปิดหน้า Booking {airline.bookingLanguage === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ'} ของสายการบินโดยตรงให้แทน</p>}
         <button className="air-book-secondary" onClick={() => navigate(back)}>กลับไปดูดีลอื่น</button>
-        <small>เมื่อกดปุ่มจอง คุณจะออกจาก TripDeal ไปยังเว็บไซต์ทางการของสายการบิน โดย TripDeal จะส่งรายละเอียดเส้นทางให้เมื่อสายการบินรองรับ Deep Link ที่ยืนยันแล้ว</small>
+        <small>{isLiveSource ? 'เที่ยวบินนี้มาจาก Amadeus Production Live Search แต่เมื่อออกจาก TripDeal ราคาหรือจำนวนที่นั่งอาจเปลี่ยนได้จนกว่าสายการบินจะยืนยันขั้นสุดท้าย' : 'รายการนี้เป็นราคาอ้างอิง เมื่อกดจองให้ตรวจเที่ยวบินและราคาจริงบนเว็บไซต์สายการบินอีกครั้ง'} · TripDeal ไม่รับชำระเงิน</small>
       </div>
     </main>
     <TripiAssistant/>
