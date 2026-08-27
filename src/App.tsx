@@ -6,7 +6,7 @@ import HomePage from './components/HomePage';
 import TravelBlogPage from './components/TravelBlogPage';
 import ExplorePage from './components/ExplorePage';
 import { SiteBottomNav, SiteHeader } from './components/SiteChrome';
-import { LanguageProvider, useLanguage } from './lib/i18n';
+import { useLanguage } from './lib/i18n';
 
 function Shell({ children }: { children: React.ReactNode }) {
   return <div className="app-shell">
@@ -33,7 +33,7 @@ function AccountPage(){
   return <Shell><div className="container narrow section account-section"><div className="profile"><div className="avatar">TD</div><div><h2>{t('nav.account')} TripDeal</h2><p>TripDeal member</p></div></div>{['การจองของฉัน','แจ้งเตือนราคา','รายการที่บันทึก','ข้อมูลผู้โดยสาร','ช่วยเหลือ','ตั้งค่า'].map(x=><div className="menu-row" key={x}>{x}<span>›</span></div>)}</div></Shell>;
 }
 
-function AppRoutes(){
+export default function App(){
   return <Routes>
     <Route path="/" element={<HomePage/>}/>
     <Route path="/explore" element={<ExplorePage/>}/>
@@ -43,8 +43,4 @@ function AppRoutes(){
     <Route path="/account" element={<AccountPage/>}/>
     <Route path="*" element={<Navigate to="/" replace/>}/>
   </Routes>;
-}
-
-export default function App(){
-  return <LanguageProvider><AppRoutes/></LanguageProvider>;
 }
