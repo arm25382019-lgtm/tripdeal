@@ -10,6 +10,7 @@ import AirlineBookingPage from './components/AirlineBookingPage';
 import { LanguageProvider } from './lib/i18n';
 import './styles.css';
 import './blog.css';
+import './explore.css';
 import './flight-detail.css';
 import './fare.css';
 import './tripi.css';
