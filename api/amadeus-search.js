@@ -4,10 +4,12 @@ const IATA_PATTERN = /^[A-Z0-9]{3}$/;
 let cachedToken = null;
 let cachedTokenExpiresAt = 0;
 
+function amadeusEnvironment() {
+  return String(process.env.AMADEUS_ENV || 'test').toLowerCase() === 'production' ? 'production' : 'test';
+}
+
 function amadeusBaseUrl() {
-  return String(process.env.AMADEUS_ENV || '').toLowerCase() === 'production'
-    ? 'https://api.amadeus.com'
-    : 'https://test.api.amadeus.com';
+  return amadeusEnvironment() === 'production' ? 'https://api.amadeus.com' : 'https://test.api.amadeus.com';
 }
 
 async function getAccessToken() {
@@ -18,21 +20,12 @@ async function getAccessToken() {
   const now = Date.now();
   if (cachedToken && cachedTokenExpiresAt > now + 60_000) return cachedToken;
 
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: apiKey,
-    client_secret: apiSecret,
-  });
-
+  const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: apiKey, client_secret: apiSecret });
   const response = await fetch(`${amadeusBaseUrl()}/v1/security/oauth2/token`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: body.toString(),
   });
-
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload?.access_token) {
     const error = new Error(payload?.error_description || payload?.error || `Amadeus auth failed (${response.status})`);
@@ -76,7 +69,7 @@ function itineraryInfo(itinerary) {
   };
 }
 
-function mapOffer(offer, adults) {
+function mapOffer(offer, adults, environment) {
   const itineraries = Array.isArray(offer?.itineraries) ? offer.itineraries : [];
   const outbound = itineraryInfo(itineraries[0]);
   if (!outbound) return null;
@@ -84,6 +77,7 @@ function mapOffer(offer, adults) {
   const validatingCarrier = String(offer?.validatingAirlineCodes?.[0] || outbound.carrier || '').toUpperCase();
   const total = Number(offer?.price?.grandTotal || offer?.price?.total || 0);
   if (!validatingCarrier || !Number.isFinite(total) || total <= 0) return null;
+  const productionLive = environment === 'production';
 
   return {
     origin: outbound.origin_airport,
@@ -109,10 +103,10 @@ function mapOffer(offer, adults) {
     instant_ticketing_required: Boolean(offer?.instantTicketingRequired),
     outbound_segments: outbound.segments,
     return_segments: inbound?.segments || [],
-    source: 'amadeus_live',
-    source_role: 'live_inventory',
-    price_basis: 'live_offer',
-    availability_status: 'live_offer_confirm_before_payment',
+    source: productionLive ? 'amadeus_live' : 'amadeus_test',
+    source_role: productionLive ? 'live_inventory' : 'test_inventory',
+    price_basis: productionLive ? 'live_offer' : 'test_offer',
+    availability_status: productionLive ? 'live_offer_confirm_before_payment' : 'test_data_only',
     provider: 'amadeus',
   };
 }
@@ -123,14 +117,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const environment = amadeusEnvironment();
   const configured = Boolean(process.env.AMADEUS_API_KEY && process.env.AMADEUS_API_SECRET);
   if (!configured) {
     return res.status(200).json({
       configured: false,
       provider: 'amadeus',
-      environment: String(process.env.AMADEUS_ENV || 'test').toLowerCase(),
+      environment,
       prices: [],
-      note: 'Add AMADEUS_API_KEY and AMADEUS_API_SECRET as server-only environment variables to enable live search.',
+      note: 'Add AMADEUS_API_KEY and AMADEUS_API_SECRET as server-only environment variables to enable Amadeus search.',
     });
   }
 
@@ -163,10 +158,7 @@ export default async function handler(req, res) {
     if (!oneWay) query.set('returnDate', returnDate);
 
     const response = await fetch(`${amadeusBaseUrl()}/v2/shopping/flight-offers?${query.toString()}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/vnd.amadeus+json',
-      },
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.amadeus+json' },
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -177,27 +169,30 @@ export default async function handler(req, res) {
     }
 
     const prices = (Array.isArray(payload?.data) ? payload.data : [])
-      .map((offer) => mapOffer(offer, adults))
+      .map((offer) => mapOffer(offer, adults, environment))
       .filter(Boolean)
       .sort((a, b) => a.price - b.price);
 
     return res.status(200).json({
       configured: true,
       provider: 'amadeus',
-      environment: String(process.env.AMADEUS_ENV || 'test').toLowerCase(),
-      data_type: 'live_flight_offers',
+      environment,
+      data_type: environment === 'production' ? 'live_flight_offers' : 'test_flight_offers',
       search: { origin, destination, departure_date: departureDate, return_date: oneWay ? null : returnDate, one_way: oneWay, adults },
       prices,
       meta: payload?.meta || null,
-      note: 'Live offers are used for comparison. Final fare, seats and payment are confirmed again by the airline during handoff.',
+      note: environment === 'production'
+        ? 'Production offers are used as live inventory for comparison. Final fare, seats and payment are confirmed again by the airline during handoff.'
+        : 'Amadeus test environment uses limited test data and must not be presented as production live inventory.',
     });
   } catch (error) {
     console.error('Amadeus search endpoint error', error);
     return res.status(502).json({
       configured: true,
       provider: 'amadeus',
+      environment,
       prices: [],
-      error: error instanceof Error ? error.message : 'Amadeus live search is temporarily unavailable',
+      error: error instanceof Error ? error.message : 'Amadeus search is temporarily unavailable',
     });
   }
 }
