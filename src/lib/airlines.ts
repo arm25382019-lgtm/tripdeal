@@ -66,6 +66,7 @@ const AIRLINES: Record<string, AirlineInfo> = {
   LJ: { code: 'LJ', name: 'Jin Air', country: 'South Korea', bookingUrl: 'https://www.jinair.com/' },
   TW: { code: 'TW', name: "T'way Air", country: 'South Korea', bookingUrl: 'https://www.twayair.com/' },
   YP: { code: 'YP', name: 'Air Premia', country: 'South Korea', bookingUrl: 'https://www.airpremia.com/' },
+  BX: { code: 'BX', name: 'Air Busan', country: 'South Korea', bookingUrl: 'https://www.airbusan.com/' },
 
   // Hong Kong / Macau
   CX: { code: 'CX', name: 'Cathay Pacific', country: 'Hong Kong', bookingUrl: 'https://www.cathaypacific.com/' },
@@ -86,6 +87,7 @@ const AIRLINES: Record<string, AirlineInfo> = {
   HU: { code: 'HU', name: 'Hainan Airlines', country: 'China', bookingUrl: 'https://www.hainanairlines.com/' },
   HO: { code: 'HO', name: 'Juneyao Air', country: 'China', bookingUrl: 'https://www.juneyaoair.com/' },
   '9C': { code: '9C', name: 'Spring Airlines', country: 'China', bookingUrl: 'https://en.ch.com/' },
+  SC: { code: 'SC', name: 'Shandong Airlines', country: 'China', bookingUrl: 'https://www.sda.cn/' },
 
   // Philippines
   PR: { code: 'PR', name: 'Philippine Airlines', country: 'Philippines', bookingUrl: 'https://www.philippineairlines.com/' },
