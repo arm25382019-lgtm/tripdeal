@@ -4,6 +4,8 @@ export type AirlineInfo = {
   country: string;
   bookingUrl: string;
   airAsiaGroup?: boolean;
+  bookingLanguage?: 'th' | 'en';
+  bookingFlow?: 'deep_link' | 'booking_page' | 'homepage';
 };
 
 export type RouteAirlineFallback = {
@@ -24,23 +26,23 @@ export type DirectBookingParams = {
 
 const AIRLINES: Record<string, AirlineInfo> = {
   // Thailand
-  TG: { code: 'TG', name: 'Thai Airways', country: 'Thailand', bookingUrl: 'https://www.thaiairways.com/' },
-  PG: { code: 'PG', name: 'Bangkok Airways', country: 'Thailand', bookingUrl: 'https://www.bangkokair.com/' },
-  FD: { code: 'FD', name: 'Thai AirAsia', country: 'Thailand', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
-  XJ: { code: 'XJ', name: 'Thai AirAsia X', country: 'Thailand', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
-  VZ: { code: 'VZ', name: 'Thai VietJet Air', country: 'Thailand', bookingUrl: 'https://th.vietjetair.com/' },
-  SL: { code: 'SL', name: 'Thai Lion Air', country: 'Thailand', bookingUrl: 'https://www.lionairthai.com/' },
-  DD: { code: 'DD', name: 'Nok Air', country: 'Thailand', bookingUrl: 'https://www.nokair.com/' },
+  TG: { code: 'TG', name: 'Thai Airways', country: 'Thailand', bookingUrl: 'https://www.thaiairways.com/th-th/book/book-flight/', bookingLanguage: 'th', bookingFlow: 'booking_page' },
+  PG: { code: 'PG', name: 'Bangkok Airways', country: 'Thailand', bookingUrl: 'https://www.bangkokair.com/tha/flight/booking', bookingLanguage: 'th', bookingFlow: 'booking_page' },
+  FD: { code: 'FD', name: 'Thai AirAsia', country: 'Thailand', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
+  XJ: { code: 'XJ', name: 'Thai AirAsia X', country: 'Thailand', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
+  VZ: { code: 'VZ', name: 'Thai VietJet Air', country: 'Thailand', bookingUrl: 'https://th.vietjetair.com/', bookingLanguage: 'th', bookingFlow: 'booking_page' },
+  SL: { code: 'SL', name: 'Thai Lion Air', country: 'Thailand', bookingUrl: 'https://www.lionairthai.com/', bookingLanguage: 'th', bookingFlow: 'homepage' },
+  DD: { code: 'DD', name: 'Nok Air', country: 'Thailand', bookingUrl: 'https://www.nokair.com/', bookingLanguage: 'th', bookingFlow: 'homepage' },
 
   // AirAsia Group / Southeast Asia
-  AK: { code: 'AK', name: 'AirAsia Malaysia', country: 'Malaysia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
-  D7: { code: 'D7', name: 'AirAsia X', country: 'Malaysia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
-  QZ: { code: 'QZ', name: 'Indonesia AirAsia', country: 'Indonesia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
-  Z2: { code: 'Z2', name: 'Philippines AirAsia', country: 'Philippines', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
-  KT: { code: 'KT', name: 'AirAsia Cambodia', country: 'Cambodia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true },
+  AK: { code: 'AK', name: 'AirAsia Malaysia', country: 'Malaysia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
+  D7: { code: 'D7', name: 'AirAsia X', country: 'Malaysia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
+  QZ: { code: 'QZ', name: 'Indonesia AirAsia', country: 'Indonesia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
+  Z2: { code: 'Z2', name: 'Philippines AirAsia', country: 'Philippines', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
+  KT: { code: 'KT', name: 'AirAsia Cambodia', country: 'Cambodia', bookingUrl: 'https://www.airasia.com/flight/th/th', airAsiaGroup: true, bookingLanguage: 'th', bookingFlow: 'deep_link' },
 
   // Singapore / Malaysia / Brunei / Indonesia
-  SQ: { code: 'SQ', name: 'Singapore Airlines', country: 'Singapore', bookingUrl: 'https://www.singaporeair.com/' },
+  SQ: { code: 'SQ', name: 'Singapore Airlines', country: 'Singapore', bookingUrl: 'https://www.singaporeair.com/th_TH/th/home', bookingLanguage: 'th', bookingFlow: 'booking_page' },
   TR: { code: 'TR', name: 'Scoot', country: 'Singapore', bookingUrl: 'https://www.flyscoot.com/' },
   MH: { code: 'MH', name: 'Malaysia Airlines', country: 'Malaysia', bookingUrl: 'https://www.malaysiaairlines.com/' },
   OD: { code: 'OD', name: 'Batik Air Malaysia', country: 'Malaysia', bookingUrl: 'https://www.batikair.com.my/' },
@@ -53,14 +55,14 @@ const AIRLINES: Record<string, AirlineInfo> = {
   VJ: { code: 'VJ', name: 'VietJet Air', country: 'Vietnam', bookingUrl: 'https://www.vietjetair.com/' },
 
   // Japan
-  JL: { code: 'JL', name: 'Japan Airlines', country: 'Japan', bookingUrl: 'https://www.jal.co.jp/' },
-  NH: { code: 'NH', name: 'ANA', country: 'Japan', bookingUrl: 'https://www.ana.co.jp/' },
+  JL: { code: 'JL', name: 'Japan Airlines', country: 'Japan', bookingUrl: 'https://www.jal.co.jp/th-th/book.html', bookingLanguage: 'th', bookingFlow: 'booking_page' },
+  NH: { code: 'NH', name: 'ANA', country: 'Japan', bookingUrl: 'https://www.ana.co.jp/th/th/plan-book/', bookingLanguage: 'th', bookingFlow: 'booking_page' },
   ZG: { code: 'ZG', name: 'ZIPAIR', country: 'Japan', bookingUrl: 'https://www.zipair.net/' },
   MM: { code: 'MM', name: 'Peach Aviation', country: 'Japan', bookingUrl: 'https://www.flypeach.com/' },
   GK: { code: 'GK', name: 'Jetstar Japan', country: 'Japan', bookingUrl: 'https://www.jetstar.com/' },
 
   // South Korea
-  KE: { code: 'KE', name: 'Korean Air', country: 'South Korea', bookingUrl: 'https://www.koreanair.com/' },
+  KE: { code: 'KE', name: 'Korean Air', country: 'South Korea', bookingUrl: 'https://www.koreanair.com/flights/th-th/', bookingLanguage: 'th', bookingFlow: 'booking_page' },
   OZ: { code: 'OZ', name: 'Asiana Airlines', country: 'South Korea', bookingUrl: 'https://flyasiana.com/' },
   '7C': { code: '7C', name: 'Jeju Air', country: 'South Korea', bookingUrl: 'https://www.jejuair.net/' },
   LJ: { code: 'LJ', name: 'Jin Air', country: 'South Korea', bookingUrl: 'https://www.jinair.com/' },
@@ -85,7 +87,7 @@ const AIRLINES: Record<string, AirlineInfo> = {
   CZ: { code: 'CZ', name: 'China Southern Airlines', country: 'China', bookingUrl: 'https://www.csair.com/' },
   MF: { code: 'MF', name: 'XiamenAir', country: 'China', bookingUrl: 'https://www.xiamenair.com/' },
   HU: { code: 'HU', name: 'Hainan Airlines', country: 'China', bookingUrl: 'https://www.hainanairlines.com/' },
-  HO: { code: 'HO', name: 'Juneyao Air', country: 'China', bookingUrl: 'https://global.juneyaoair.com/flightInquiry' },
+  HO: { code: 'HO', name: 'Juneyao Air', country: 'China', bookingUrl: 'https://global.juneyaoair.com/flightInquiry', bookingLanguage: 'en', bookingFlow: 'booking_page' },
   '9C': { code: '9C', name: 'Spring Airlines', country: 'China', bookingUrl: 'https://en.ch.com/' },
   SC: { code: 'SC', name: 'Shandong Airlines', country: 'China', bookingUrl: 'https://www.sda.cn/' },
 
